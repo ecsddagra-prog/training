@@ -32,7 +32,14 @@ router.post('/login', async (req, res) => {
       employeeId: user.employee_id,
       name: user.name,
       role: user.role,
-      passwordResetRequired: user.password_reset_required
+      passwordResetRequired: user.password_reset_required,
+      personnel_number: user.personnel_number,
+      personnel_area: user.personnel_area,
+      employee_group: user.employee_group,
+      discom: user.discom,
+      gender: user.gender,
+      personal_mobile: user.personal_mobile,
+      mobile: user.mobile
     }
   });
 });

@@ -32,13 +32,20 @@ router.post('/questions', async (req, res) => {
 });
 
 router.get('/questions', async (req, res) => {
-  const { status } = req.query;
+  const { status, all, assigned } = req.query;
   
   let query = supabase
     .from('questions')
-    .select('*')
-    .eq('created_by', req.user.id)
+    .select('*, users(name)')
     .order('created_at', { ascending: false });
+    
+  if (assigned === 'true') {
+    // Show questions assigned to this contributor
+    query = query.eq('assigned_to', req.user.id);
+  } else if (!all) {
+    // Show questions created by this contributor
+    query = query.eq('created_by', req.user.id);
+  }
     
   if (status) query = query.eq('status', status);
 
@@ -127,27 +134,39 @@ router.post('/questions/bulk', upload.single('file'), async (req, res) => {
 
 router.put('/questions/:id', async (req, res) => {
   const { id } = req.params;
-  const { question, type, options, correctAnswer, difficulty, subject } = req.body;
+  const { question, type, options, correctAnswer, difficulty, category, lot } = req.body;
+
+  // Check if user can edit this question (created by them or assigned to them)
+  const { data: existingQuestion } = await supabase
+    .from('questions')
+    .select('created_by, assigned_to')
+    .eq('id', id)
+    .single();
+
+  if (!existingQuestion || 
+      (existingQuestion.created_by !== req.user.id && existingQuestion.assigned_to !== req.user.id)) {
+    return res.status(403).json({ error: 'Not authorized to edit this question' });
+  }
+
+  const updateData = {
+    question,
+    type,
+    options,
+    correct_answer: correctAnswer,
+    difficulty,
+    category
+  };
+
+  if (lot !== undefined) updateData.lot = lot;
 
   const { data, error } = await supabase
     .from('questions')
-    .update({
-      question,
-      type,
-      options,
-      correct_answer: correctAnswer,
-      difficulty,
-      subject
-    })
+    .update(updateData)
     .eq('id', id)
-    .eq('created_by', req.user.id)
-    .eq('status', 'pending')
     .select()
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: 'Question not found or cannot be edited' });
-  
   res.json(data);
 });
 
@@ -181,6 +200,17 @@ router.get('/stats', async (req, res) => {
   };
 
   res.json(stats);
+});
+
+router.get('/profile', async (req, res) => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', req.user.id)
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
 });
 
 export default router;

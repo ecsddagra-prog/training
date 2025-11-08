@@ -17,11 +17,61 @@ router.post('/:examId/start', async (req, res) => {
     .select('*')
     .eq('exam_id', examId)
     .eq('user_id', userId)
-    .eq('is_active', true)
-    .single();
+    .maybeSingle();
 
   if (existingSession) {
-    return res.status(400).json({ error: 'Exam already in progress' });
+    // Check if session has expired
+    const sessionEndsAt = new Date(existingSession.ends_at);
+    const now = new Date();
+    
+    if (now > sessionEndsAt || !existingSession.is_active) {
+      // Delete expired or inactive session
+      const { error: deleteError } = await supabase
+        .from('exam_sessions')
+        .delete()
+        .eq('id', existingSession.id);
+      
+      if (deleteError) {
+        console.error('Failed to delete old session:', deleteError);
+      }
+      // Continue to create new session below
+    } else {
+      // Return existing active session to continue
+      const { data: questions } = await supabase
+        .from('exam_questions')
+        .select('questions(id, question, type, options, difficulty, subject)')
+        .eq('exam_id', examId);
+
+      let questionsData = questions.map(q => ({
+        id: q.questions.id,
+        question: q.questions.question,
+        type: q.questions.type,
+        options: q.questions.options,
+        difficulty: q.questions.difficulty,
+        subject: q.questions.subject
+      }));
+
+      const { data: exam } = await supabase
+        .from('exams')
+        .select('*')
+        .eq('id', examId)
+        .single();
+
+      return res.json({ 
+        exam: {
+          id: exam.id,
+          title: exam.title,
+          description: exam.description,
+          duration: exam.duration,
+          passing_score: exam.passing_score
+        },
+        questions: questionsData,
+        startedAt: new Date(existingSession.started_at).toISOString(),
+        endsAt: new Date(existingSession.ends_at).toISOString(),
+        serverTime: new Date().toISOString(),
+        resuming: true
+      });
+    }
   }
 
   const { data: exam } = await supabase
@@ -32,13 +82,16 @@ router.post('/:examId/start', async (req, res) => {
 
   if (!exam) return res.status(404).json({ error: 'Exam not found' });
 
-  // Check if exam is within time window
+  // Check if exam is within time window (allow 15 min late start after exam start_time)
   const now = new Date();
-  if (exam.start_time && new Date(exam.start_time) > now) {
+  const startTime = exam.start_time ? new Date(exam.start_time) : null;
+  const lateStartAllowed = startTime ? new Date(startTime.getTime() + 15 * 60 * 1000) : null;
+  
+  if (startTime && now < startTime) {
     return res.status(400).json({ error: 'Exam has not started yet' });
   }
-  if (exam.end_time && new Date(exam.end_time) < now) {
-    return res.status(400).json({ error: 'Exam has ended' });
+  if (lateStartAllowed && now > lateStartAllowed) {
+    return res.status(400).json({ error: 'Late start time exceeded (15 min after start)' });
   }
 
   const { data: questions } = await supabase
@@ -65,19 +118,43 @@ router.post('/:examId/start', async (req, res) => {
     questionsData = questionsData.slice(0, exam.questions_per_exam);
   }
 
-  // Create exam session
+  // Create exam session - end time calculation
   const startedAt = new Date();
-  const endsAt = new Date(startedAt.getTime() + exam.duration * 60 * 1000);
+  let endsAt;
   
-  await supabase
+  if (exam.end_time) {
+    // Fixed end time - but ensure user gets at least the duration
+    const fixedEndTime = new Date(exam.end_time);
+    const durationBasedEndTime = new Date(startedAt.getTime() + exam.duration * 60 * 1000);
+    // Use whichever is later to give user full duration
+    endsAt = fixedEndTime > durationBasedEndTime ? fixedEndTime : durationBasedEndTime;
+  } else {
+    // Duration based - standard calculation
+    endsAt = new Date(startedAt.getTime() + exam.duration * 60 * 1000);
+  }
+  
+  const { data: sessionData, error: sessionError } = await supabase
     .from('exam_sessions')
-    .insert({
+    .upsert({
       exam_id: examId,
       user_id: userId,
       started_at: startedAt.toISOString(),
       ends_at: endsAt.toISOString(),
-      answers: {}
-    });
+      answers: {},
+      is_active: true,
+      last_activity: new Date().toISOString()
+    }, {
+      onConflict: 'exam_id,user_id'
+    })
+    .select()
+    .single();
+
+  if (sessionError) {
+    console.error('Failed to create session:', sessionError);
+    return res.status(400).json({ error: 'Failed to create exam session: ' + sessionError.message });
+  }
+
+  console.log('Session created:', sessionData);
 
   res.json({ 
     exam: {
@@ -89,7 +166,7 @@ router.post('/:examId/start', async (req, res) => {
     },
     questions: questionsData,
     startedAt: startedAt.toISOString(),
-    endsAt: endsAt.toISOString(),
+    endsAt: new Date(endsAt).toISOString(),
     serverTime: new Date().toISOString()
   });
 });
@@ -141,23 +218,79 @@ router.post('/:examId/submit', async (req, res) => {
   const { answers, totalTime, submittedAt, clientScore, clientPercentage } = req.body;
   const userId = req.user.id;
 
-  // Check if session exists and is active
-  const { data: session } = await supabase
+  console.log('Submit attempt:', { examId, userId, timestamp: new Date().toISOString() });
+
+  // FIRST: Check if result already exists (idempotency check)
+  const { data: existingResult } = await supabase
+    .from('exam_results')
+    .select('*')
+    .eq('exam_id', examId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existingResult) {
+    console.log('Result already exists, returning existing result:', existingResult.id);
+    return res.json({ 
+      success: true,
+      result: {
+        id: existingResult.id,
+        score: existingResult.score,
+        total_questions: existingResult.total_questions,
+        percentage: existingResult.percentage,
+        total_time: existingResult.total_time,
+        submitted_at: existingResult.submitted_at
+      },
+      message: 'Exam already submitted'
+    });
+  }
+
+  // Check if session exists (active or inactive - we'll validate time separately)
+  const { data: session, error: sessionError } = await supabase
     .from('exam_sessions')
     .select('*')
     .eq('exam_id', examId)
     .eq('user_id', userId)
-    .eq('is_active', true)
-    .single();
+    .maybeSingle();
+
+  console.log('Session query result:', { session, sessionError });
 
   if (!session) {
-    return res.status(400).json({ error: 'No active exam session found' });
+    // No session found at all
+    return res.status(400).json({ error: 'No exam session found. Please start the exam first.' });
   }
 
-  // Server-side validation: Check if time is valid
-  const actualTime = Math.floor((new Date() - new Date(session.started_at)) / 1000);
-  if (actualTime > (session.ends_at ? Math.floor((new Date(session.ends_at) - new Date(session.started_at)) / 1000) : Infinity) + 5) {
-    return res.status(400).json({ error: 'Exam time exceeded' });
+  // Server-side validation: Check if time is valid (allow 10 min buffer for flexibility)
+  const now = new Date();
+  const endsAt = new Date(session.ends_at);
+  const buffer = 600000; // 10 minutes (increased for auto-submit delays and network issues)
+  const timeRemaining = endsAt - now;
+  const timeExceeded = now - endsAt;
+  
+  console.log('Submit validation:', {
+    sessionEndsAt: session.ends_at,
+    now: now.toISOString(),
+    endsAt: endsAt.toISOString(),
+    timeRemaining: Math.floor(timeRemaining / 1000) + ' seconds',
+    timeExceeded: Math.floor(timeExceeded / 1000) + ' seconds',
+    bufferAllowed: buffer / 1000 + ' seconds',
+    willReject: timeExceeded > buffer,
+    sessionActive: session.is_active
+  });
+  
+  // Only enforce time limit if session is still active
+  // If session is inactive but no result exists, allow submission (recovery scenario)
+  if (session.is_active && timeExceeded > buffer) {
+    console.log('Time exceeded on active session - rejecting submit');
+    return res.status(400).json({ 
+      error: 'Exam time exceeded',
+      details: `Exam ended at ${endsAt.toISOString()}, current time is ${now.toISOString()}`
+    });
+  }
+  
+  if (!session.is_active) {
+    console.log('Session inactive but allowing submission as recovery (no existing result)');
+  } else {
+    console.log('Time validation passed');
   }
 
   // Fetch questions for server-side validation
@@ -178,12 +311,9 @@ router.post('/:examId/submit', async (req, res) => {
 
   const serverPercentage = (serverScore / totalQuestions) * 100;
 
-  // Validate client calculation (allow small floating point differences)
-  if (Math.abs(serverScore - clientScore) > 0 || Math.abs(serverPercentage - clientPercentage) > 0.1) {
-    console.warn(`Score mismatch for user ${userId}: client=${clientScore}, server=${serverScore}`);
-  }
+  // Client doesn't calculate actual score for security - server is authoritative
+  console.log(`Score calculated: ${serverScore}/${totalQuestions} (${serverPercentage}%)`);
 
-  // Use server score as authoritative
   const finalScore = serverScore;
   const finalPercentage = serverPercentage;
 
@@ -202,7 +332,7 @@ router.post('/:examId/submit', async (req, res) => {
       score: finalScore,
       total_questions: totalQuestions,
       percentage: finalPercentage,
-      total_time: totalTime || actualTime,
+      total_time: totalTime,
       submitted_at: submittedAt || new Date().toISOString()
     })
     .select()
@@ -250,7 +380,13 @@ async function calculateRankAndGenerateCertificate(examId) {
       .update({ rank })
       .eq('id', results[i].id);
 
-    if (results[i].percentage >= 50) {
+    const { data: exam } = await supabase
+      .from('exams')
+      .select('certificate_enabled')
+      .eq('id', examId)
+      .single();
+
+    if (exam?.certificate_enabled && results[i].percentage >= 50) {
       const certificateUrl = await generateCertificate(results[i]);
       await supabase
         .from('exam_results')

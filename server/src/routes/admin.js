@@ -8,7 +8,10 @@ import { authenticate, authorize } from '../middleware/auth.js';
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 
-router.use(authenticate, authorize('admin'));
+router.use(authenticate, (req, res, next) => {
+  console.log('Admin route accessed by:', req.user);
+  next();
+}, authorize('admin'));
 
 router.post('/upload-employees', upload.single('file'), async (req, res) => {
   try {
@@ -126,7 +129,67 @@ router.post('/upload-employees', upload.single('file'), async (req, res) => {
         department: String(row['Department'] || row['Department Text'] || 'General').trim(),
         password_hash: await bcrypt.hash(defaultPassword, 10),
         role: 'employee',
-        password_reset_required: true
+        password_reset_required: true,
+        // All additional fields from Excel
+        personnel_number: String(row['Personnel Number'] || '').trim(),
+        title: String(row['Title'] || '').trim(),
+        previous_personnel_no: String(row['Previous Personnel No.'] || '').trim(),
+        old_audit_no: String(row['Old Audit No.'] || '').trim(),
+        seniority_no: String(row['Seniority No.'] || '').trim(),
+        old_role_no: String(row['Old Role No.'] || '').trim(),
+        pf_trust: String(row['PF Trust'] || '').trim(),
+        payroll_area_code: String(row['Payroll Area Code'] || '').trim(),
+        payroll_area: String(row['Payroll Area'] || '').trim(),
+        discom: String(row['DISCOM'] || '').trim(),
+        personnel_area_code: String(row['Personnel Area Code'] || '').trim(),
+        personnel_area: String(row['Personnel Area'] || '').trim(),
+        personnel_sub_area_code: String(row['Personnel Sub-Area Code'] || '').trim(),
+        personnel_sub_area: String(row['Personnel Sub-Area'] || '').trim(),
+        district: String(row['District'] || '').trim(),
+        employee_group_code: String(row['Employee Group Code'] || '').trim(),
+        employee_group: String(row['Employee Group'] || '').trim(),
+        employee_sub_group_code: String(row['Employee Sub-Group Code'] || '').trim(),
+        employee_sub_group: String(row['Employee Sub-Group'] || '').trim(),
+        reporting_officer_id: String(row['Reporting Officer Id'] || '').trim(),
+        reporting_officer_name: String(row['Reporting Officer Name'] || '').trim(),
+        department_id: String(row['Department ID'] || '').trim(),
+        ddo_office_code: String(row['DDO Office Code'] || '').trim(),
+        ddo_office_name: String(row['DDO Office Name'] || '').trim(),
+        ddo_name: String(row['DDO Name'] || '').trim(),
+        additional_charge: String(row['Additional Charge'] || '').trim(),
+        position_id: String(row['Position ID.'] || '').trim(),
+        position_text: String(row['Position Text'] || '').trim(),
+        job_id: String(row['Job ID'] || '').trim(),
+        job_description: String(row['Job Descrption'] || '').trim(),
+        cost_center: String(row['Cost Center'] || '').trim(),
+        cost_center_text: String(row['Cost Center Text'] || '').trim(),
+        work_schedule: String(row['Work Schedule'] || '').trim(),
+        shift_details: String(row['Shift Details'] || '').trim(),
+        date_of_joining_pcl: convertExcelDate(row['Date of Joining-PCL']),
+        designation_at_joining_pcl: String(row['Designation at Joining-PCL'] || '').trim(),
+        employee_group_at_joining_pcl: String(row['Employee group at Joining-PCL'] || '').trim(),
+        employee_subgroup_at_joining_pcl: String(row['Employee Subgroup at Joining-PCL'] || '').trim(),
+        personnel_area_at_joining_pcl: String(row['Personnel Area at Joining-PCL'] || '').trim(),
+        personnel_subarea_at_joining_pcl: String(row['Personnel Subarea at Joining-PCL'] || '').trim(),
+        date_of_regularization_pcl: convertExcelDate(row['Date of Regularization-PCL']),
+        probation_end_date: convertExcelDate(row['Probation End Date-Joining-PCL']),
+        date_of_birth: convertExcelDate(row['Date of Birth']),
+        age: String(row['Age'] || '').trim(),
+        age_years: parseFloat(row['Age']) || null,
+        date_of_retirement_pcl: convertExcelDate(row['Date of Retirement - PCL']),
+        gender: String(row['Gender'] || '').trim(),
+        religion: String(row['Religion'] || '').trim(),
+        category: String(row['Category'] || '').trim(),
+        sub_category: String(row['Sub Category'] || '').trim(),
+        marital_status: String(row['Marital Status'] || '').trim(),
+        personal_mobile: String(row['Personal Mob.'] || '').trim(),
+        official_mobile: String(row['Official Mob.'] || '').trim(),
+        official_email: String(row['Off. Email'] || '').trim(),
+        personal_email: String(row['Personal Email'] || '').trim(),
+        pf_acc_no: String(row['PF Acc. No.'] || '').trim(),
+        pension_acc_no: String(row['Pension Acc. No.'] || '').trim(),
+        fathers_name: String(row['Fathers Name'] || '').trim(),
+        mother_name: String(row['Mother Name'] || '').trim()
       });
     }
 
@@ -203,6 +266,77 @@ router.get('/exams', async (req, res) => {
   res.json(data);
 });
 
+router.get('/exams/:examId', async (req, res) => {
+  const { examId } = req.params;
+  const { data, error } = await supabase
+    .from('exams')
+    .select('*')
+    .eq('id', examId)
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+router.put('/exams/:examId', async (req, res) => {
+  const { examId } = req.params;
+  const { title, description, duration, passingScore, startTime, endTime } = req.body;
+  
+  // Check if exam has started
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('start_time')
+    .eq('id', examId)
+    .single();
+    
+  if (exam?.start_time && new Date(exam.start_time) <= new Date()) {
+    return res.status(400).json({ error: 'Cannot edit exam after start time' });
+  }
+
+  const examData = {
+    title,
+    description,
+    duration,
+    passing_score: passingScore
+  };
+
+  if (startTime) examData.start_time = startTime;
+  if (endTime) examData.end_time = endTime;
+
+  const { data, error } = await supabase
+    .from('exams')
+    .update(examData)
+    .eq('id', examId)
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+router.delete('/exams/:examId', async (req, res) => {
+  const { examId } = req.params;
+  
+  // Check if exam has started
+  const { data: exam } = await supabase
+    .from('exams')
+    .select('start_time')
+    .eq('id', examId)
+    .single();
+    
+  if (exam?.start_time && new Date(exam.start_time) <= new Date()) {
+    return res.status(400).json({ error: 'Cannot delete exam after start time' });
+  }
+
+  const { error } = await supabase
+    .from('exams')
+    .delete()
+    .eq('id', examId);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ message: 'Exam deleted successfully' });
+});
+
 router.post('/exams/:examId/assign', async (req, res) => {
   const { examId } = req.params;
   const { employeeIds } = req.body;
@@ -241,23 +375,42 @@ router.get('/questions/approved', async (req, res) => {
     .select('*')
     .eq('status', 'approved');
     
-  if (subject) query = query.eq('subject', subject);
+  if (subject) query = query.eq('category', subject);
   if (difficulty) query = query.eq('difficulty', difficulty);
   
   const { data, error } = await query;
 
   if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  
+  const formatted = data.map(q => ({
+    ...q,
+    question_text: q.question,
+    option_a: q.options?.A || '',
+    option_b: q.options?.B || '',
+    option_c: q.options?.C || '',
+    option_d: q.options?.D || '',
+    subject: q.category || q.subject
+  }));
+  
+  res.json(formatted);
 });
 
 router.get('/analytics/dashboard', async (req, res) => {
   try {
     const [examsResult, usersResult, questionsResult, resultsResult] = await Promise.all([
-      supabase.from('exams').select('id').eq('created_at', 'gte', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+      supabase.from('exams').select('id'),
       supabase.from('users').select('id, role'),
       supabase.from('questions').select('id, status'),
-      supabase.from('exam_results').select('id, percentage')
+      supabase.from('exam_results').select('id, percentage, submitted_at')
     ]);
+
+    const results = resultsResult.data || [];
+    const passedResults = results.filter(r => r.percentage >= 50);
+    const recentResults = results.filter(r => {
+      const submittedDate = new Date(r.submitted_at);
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return submittedDate >= weekAgo;
+    });
 
     const analytics = {
       totalExams: examsResult.data?.length || 0,
@@ -271,12 +424,48 @@ router.get('/analytics/dashboard', async (req, res) => {
         approved: questionsResult.data?.filter(q => q.status === 'approved').length || 0,
         rejected: questionsResult.data?.filter(q => q.status === 'rejected').length || 0
       },
-      averageScore: resultsResult.data?.length > 0 
-        ? (resultsResult.data.reduce((sum, r) => sum + r.percentage, 0) / resultsResult.data.length).toFixed(2)
+      examResults: {
+        totalAttempts: results.length,
+        passedCount: passedResults.length,
+        failedCount: results.length - passedResults.length,
+        passRate: results.length > 0 ? ((passedResults.length / results.length) * 100).toFixed(1) : 0,
+        recentAttempts: recentResults.length
+      },
+      averageScore: results.length > 0 
+        ? (results.reduce((sum, r) => sum + r.percentage, 0) / results.length).toFixed(2)
         : 0
     };
 
     res.json(analytics);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.get('/results/recent', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('exam_results')
+      .select('*, users(name, employee_id), exams(title)')
+      .order('submitted_at', { ascending: false })
+      .limit(10);
+
+    if (error) return res.status(400).json({ error: error.message });
+    
+    const formatted = data.map(r => ({
+      id: r.id,
+      user_name: r.users?.name,
+      employee_id: r.users?.employee_id,
+      exam_title: r.exams?.title,
+      score: r.score,
+      total_questions: r.total_questions,
+      percentage: r.percentage,
+      status: r.percentage >= 50 ? 'passed' : 'failed',
+      submitted_at: r.submitted_at,
+      rank: r.rank
+    }));
+    
+    res.json(formatted);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -289,7 +478,19 @@ router.get('/questions/pending', async (req, res) => {
     .eq('status', 'pending');
 
   if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  
+  const formatted = data.map(q => ({
+    ...q,
+    question_text: q.question,
+    option_a: q.options?.A || '',
+    option_b: q.options?.B || '',
+    option_c: q.options?.C || '',
+    option_d: q.options?.D || '',
+    contributor_name: q.users?.name || 'Unknown',
+    subject: q.category || q.subject
+  }));
+  
+  res.json(formatted);
 });
 
 router.patch('/questions/:id/approve', async (req, res) => {
@@ -319,21 +520,68 @@ router.patch('/questions/:id/reject', async (req, res) => {
 router.get('/results/:examId', async (req, res) => {
   const { examId } = req.params;
 
-  const { data, error } = await supabase
-    .from('exam_results')
-    .select('*, users(name, employee_id, department)')
-    .eq('exam_id', examId)
-    .order('rank', { ascending: true });
+  const [resultsData, examData] = await Promise.all([
+    supabase
+      .from('exam_results')
+      .select('*, users(name, employee_id, department)')
+      .eq('exam_id', examId)
+      .order('rank', { ascending: true }),
+    supabase
+      .from('exams')
+      .select('title, passing_score')
+      .eq('id', examId)
+      .single()
+  ]);
 
-  if (error) return res.status(400).json({ error: error.message });
-  res.json(data);
+  if (resultsData.error) return res.status(400).json({ error: resultsData.error.message });
+  
+  const results = resultsData.data || [];
+  const exam = examData.data;
+  
+  // Calculate analytics
+  const totalAttempts = results.length;
+  const passedResults = results.filter(r => r.percentage >= (exam?.passing_score || 50));
+  const failedResults = results.filter(r => r.percentage < (exam?.passing_score || 50));
+  
+  const analytics = {
+    totalAttempts,
+    passed: passedResults.length,
+    failed: failedResults.length,
+    passRate: totalAttempts > 0 ? ((passedResults.length / totalAttempts) * 100).toFixed(1) : 0,
+    averageScore: totalAttempts > 0 ? (results.reduce((sum, r) => sum + r.percentage, 0) / totalAttempts).toFixed(1) : 0,
+    highestScore: totalAttempts > 0 ? Math.max(...results.map(r => r.percentage)) : 0,
+    lowestScore: totalAttempts > 0 ? Math.min(...results.map(r => r.percentage)) : 0,
+    topPerformers: results.slice(0, 5).map(r => ({
+      name: r.users?.name,
+      employee_id: r.users?.employee_id,
+      percentage: r.percentage,
+      rank: r.rank
+    })),
+    departmentWise: results.reduce((acc, r) => {
+      const dept = r.users?.department || 'Unknown';
+      if (!acc[dept]) acc[dept] = { total: 0, passed: 0 };
+      acc[dept].total++;
+      if (r.percentage >= (exam?.passing_score || 50)) acc[dept].passed++;
+      return acc;
+    }, {})
+  };
+  
+  const formatted = results.map(r => ({
+    ...r,
+    user_name: r.users?.name,
+    employee_id: r.users?.employee_id,
+    department: r.users?.department,
+    status: r.percentage >= (exam?.passing_score || 50) ? 'passed' : 'failed',
+    total_marks: r.total_questions
+  }));
+  
+  res.json({ results: formatted, analytics, exam });
 });
 
 router.get('/employees', async (req, res) => {
   const { data, error } = await supabase
     .from('users')
-    .select('id, employee_id, name, email, department')
-    .eq('role', 'employee');
+    .select('id, employee_id, name, email, department, role, personnel_number, personnel_area, employee_group, discom, gender, personal_mobile');
 
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
@@ -351,6 +599,102 @@ router.post('/reset-password/:employeeId', async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   res.json({ message: 'Password reset successfully' });
+});
+
+router.patch('/employees/:userId/role', async (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+
+  if (!['admin', 'contributor', 'employee'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .update({ role })
+    .eq('id', userId);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ message: `Role updated to ${role} successfully` });
+});
+
+router.patch('/exams/:examId/certificate', async (req, res) => {
+  const { examId } = req.params;
+  const { enabled } = req.body;
+
+  const { error } = await supabase
+    .from('exams')
+    .update({ certificate_enabled: enabled })
+    .eq('id', examId);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ message: `Certificate ${enabled ? 'enabled' : 'disabled'} successfully` });
+});
+
+router.post('/results/:resultId/generate-certificate', async (req, res) => {
+  const { resultId } = req.params;
+
+  const { data: result, error } = await supabase
+    .from('exam_results')
+    .select('*, users(name, employee_id), exams(certificate_enabled)')
+    .eq('id', resultId)
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  if (!result) return res.status(404).json({ error: 'Result not found' });
+  if (result.percentage < 50) return res.status(400).json({ error: 'Certificate only for passed students' });
+
+  try {
+    const { generateCertificate } = await import('../utils/certificate.js');
+    const certificateUrl = await generateCertificate(result);
+    
+    await supabase
+      .from('exam_results')
+      .update({ certificate_url: certificateUrl })
+      .eq('id', resultId);
+
+    res.json({ message: 'Certificate generated successfully', certificateUrl });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/questions/:questionId/assign', async (req, res) => {
+  const { questionId } = req.params;
+  const { contributorId } = req.body;
+
+  const { error } = await supabase
+    .from('questions')
+    .update({ assigned_to: contributorId })
+    .eq('id', questionId);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ message: 'Question assigned successfully' });
+});
+
+router.post('/questions/bulk-assign', async (req, res) => {
+  const { questionIds, contributorId, filters } = req.body;
+
+  let query = supabase.from('questions').select('id');
+  
+  if (questionIds?.length) {
+    query = query.in('id', questionIds);
+  } else {
+    if (filters?.subject) query = query.eq('category', filters.subject);
+    if (filters?.lot) query = query.eq('lot', filters.lot);
+    if (filters?.difficulty) query = query.eq('difficulty', filters.difficulty);
+  }
+
+  const { data: questions } = await query;
+  const ids = questions.map(q => q.id);
+
+  const { error } = await supabase
+    .from('questions')
+    .update({ assigned_to: contributorId })
+    .in('id', ids);
+
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ message: `${ids.length} questions assigned successfully` });
 });
 
 router.post('/upload-questions', upload.single('file'), async (req, res) => {
@@ -373,9 +717,9 @@ router.post('/upload-questions', upload.single('file'), async (req, res) => {
         return obj;
       });
     } else {
-      const workbook = xlsx.readFile(filePath);
+      const workbook = xlsx.readFile(filePath, { codepage: 65001 });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      data = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+      data = xlsx.utils.sheet_to_json(sheet, { defval: '', raw: false });
     }
 
     console.log('Raw Questions data sample:', data.slice(0, 2));
@@ -399,7 +743,31 @@ router.post('/upload-questions', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No valid questions found. Required columns: Question, Option A, Option B, Correct Answer' });
     }
 
-    const questions = validRows.map(row => {
+    const questions = [];
+    const processedQuestions = new Set();
+    const skipped = [];
+
+    for (const row of validRows) {
+      const questionText = String(row['Question'] || row['question'] || '').trim();
+      
+      if (processedQuestions.has(questionText)) {
+        skipped.push(questionText.substring(0, 50));
+        continue;
+      }
+
+      const { data: existing } = await supabase
+        .from('questions')
+        .select('id')
+        .eq('question', questionText)
+        .single();
+
+      if (existing) {
+        skipped.push(questionText.substring(0, 50));
+        continue;
+      }
+
+      processedQuestions.add(questionText);
+
       const optionA = String(row['Option A'] || row['A'] || '').trim();
       const optionB = String(row['Option B'] || row['B'] || '').trim();
       const optionC = String(row['Option C'] || row['C'] || '').trim();
@@ -408,9 +776,9 @@ router.post('/upload-questions', upload.single('file'), async (req, res) => {
       const options = { A: optionA, B: optionB };
       if (optionC) options.C = optionC;
       if (optionD) options.D = optionD;
-      
-      return {
-        question: String(row['Question'] || row['question'] || '').trim(),
+
+      const questionData = {
+        question: questionText,
         type: 'mcq',
         options: options,
         correct_answer: String(row['Correct Answer'] || row['Answer'] || '').trim().toUpperCase(),
@@ -419,9 +787,16 @@ router.post('/upload-questions', upload.single('file'), async (req, res) => {
         status: 'approved',
         created_by: req.user.id
       };
-    });
 
-    console.log(`Preparing to insert ${questions.length} questions`);
+      const lot = String(row['Lot'] || row['Group'] || row['Batch'] || '').trim();
+      if (lot) questionData.lot = lot;
+
+      questions.push(questionData);
+    }
+
+    if (questions.length === 0) {
+      return res.status(400).json({ error: 'No new questions to insert (all duplicates)' });
+    }
 
     const { data: insertedQuestions, error } = await supabase
       .from('questions')
@@ -429,16 +804,19 @@ router.post('/upload-questions', upload.single('file'), async (req, res) => {
       .select();
 
     if (error) {
-      console.error('Question insert error:', error);
       return res.status(400).json({ error: error.message });
     }
 
-    console.log(`Successfully inserted ${insertedQuestions.length} questions`);
-
-    res.json({ 
+    const response = { 
       message: `${insertedQuestions.length} questions uploaded successfully`,
       count: insertedQuestions.length 
-    });
+    };
+
+    if (skipped.length > 0) {
+      response.skipped = `${skipped.length} duplicate questions ignored`;
+    }
+
+    res.json(response);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

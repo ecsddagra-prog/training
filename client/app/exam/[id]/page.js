@@ -20,7 +20,8 @@ export default function ExamPage() {
   const autosave = useCallback(async () => {
     if (Object.keys(answers).length > 0) {
       try {
-        await fetch(`/api/exam/${examId}/autosave`, {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL;
+        await fetch(`${API_URL}/exam/${examId}/autosave`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -38,6 +39,7 @@ export default function ExamPage() {
     const loadExam = async () => {
       try {
         const data = await startExam(examId);
+        console.log('Exam started:', data);
         setExam(data.exam);
         setQuestions(data.questions);
         setStartTime(new Date());
@@ -47,6 +49,11 @@ export default function ExamPage() {
         const serverNow = new Date(data.serverTime);
         const endsAt = new Date(data.endsAt);
         const timeLeftSeconds = Math.floor((endsAt - serverNow) / 1000);
+        console.log('Time calculation:');
+        console.log('Server Now:', serverNow.toISOString());
+        console.log('Ends At:', endsAt.toISOString());
+        console.log('Time Left (seconds):', timeLeftSeconds);
+        console.log('Time Left (minutes):', Math.floor(timeLeftSeconds / 60));
         setTimeLeft(Math.max(0, timeLeftSeconds));
         
         // Initialize question times
@@ -56,6 +63,8 @@ export default function ExamPage() {
         
         setLoading(false);
       } catch (error) {
+        console.error('Start exam error:', error);
+        console.error('Error response:', error.response?.data);
         alert(error.response?.data?.error || 'Failed to start exam');
         router.push('/employee');
       }
@@ -64,13 +73,26 @@ export default function ExamPage() {
   }, [examId, router]);
 
   useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (timeLeft === 0 && !submitting) {
-      handleSubmit();
+    if (loading || timeLeft <= 0) return;
+    
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [loading, timeLeft]);
+
+  useEffect(() => {
+    if (timeLeft === 0 && !submitting && !loading && questions.length > 0 && startTime) {
+      handleSubmit(true);
     }
-  }, [timeLeft, submitting]);
+  }, [timeLeft, submitting, loading, questions.length, startTime]);
 
   useEffect(() => {
     // Track time per question
@@ -116,26 +138,99 @@ export default function ExamPage() {
     };
   };
 
-  const handleSubmit = async () => {
-    if (submitting) return;
+  const submitWithRetry = async (answers, totalTime, submittedAt, clientCalc, maxRetries = 3) => {
+    let lastError;
     
-    const confirmSubmit = window.confirm('Are you sure you want to submit your exam?');
-    if (!confirmSubmit) return;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Submit attempt ${attempt}/${maxRetries}`);
+        
+        const result = await submitExam(
+          examId, 
+          answers, 
+          totalTime, 
+          submittedAt,
+          clientCalc.answeredCount,
+          0
+        );
+        
+        console.log('Submit successful:', result);
+        return result;
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`Submit attempt ${attempt} failed:`, error);
+        
+        // Don't retry if already submitted
+        if (error.response?.data?.message?.includes('already submitted')) {
+          console.log('Exam already submitted, treating as success');
+          return error.response.data;
+        }
+        
+        // Don't retry on validation errors
+        if (error.response?.status === 400 && 
+            !error.response?.data?.error?.includes('time exceeded')) {
+          throw error;
+        }
+        
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.log(`Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+    
+    throw lastError;
+  };
 
+  const handleSubmit = async (autoSubmit = false) => {
+    if (submitting) {
+      console.log('Already submitting, ignoring duplicate request');
+      return;
+    }
+    
     setSubmitting(true);
+    
+    if (!autoSubmit) {
+      const answeredCount = Object.keys(answers).length;
+      const totalQuestions = questions.length;
+      const confirmMessage = `You have answered ${answeredCount} out of ${totalQuestions} questions. Are you sure you want to submit your exam?`;
+      
+      const confirmSubmit = window.confirm(confirmMessage);
+      if (!confirmSubmit) {
+        setSubmitting(false);
+        return;
+      }
+    }
+
     try {
       const totalTime = Math.floor((new Date() - startTime) / 1000);
       const clientCalc = calculateClientScore();
       
-      // Submit with client calculation for validation
-      const result = await submitExam(
-        examId, 
-        answers, 
-        totalTime, 
+      // Validate we have the required data
+      if (!examId || !startTime) {
+        throw new Error('Missing exam data. Please refresh and try again.');
+      }
+      
+      console.log('Submitting exam:', {
+        examId,
+        answersCount: Object.keys(answers).length,
+        totalTime,
+        clientCalc,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Submit with retry logic
+      const result = await submitWithRetry(
+        answers,
+        totalTime,
         new Date().toISOString(),
-        clientCalc.answeredCount, // Client doesn't calculate actual score
-        0 // Client doesn't calculate percentage
+        clientCalc
       );
+      
+      console.log('Submit result:', result);
       
       // Store result with question times for display
       const resultWithTimes = {
@@ -147,7 +242,39 @@ export default function ExamPage() {
       localStorage.setItem('examResult', JSON.stringify(resultWithTimes));
       router.push(`/exam/${examId}/result`);
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to submit exam');
+      console.error('Submit error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      // More detailed error message
+      let errorMessage = 'Failed to submit exam';
+      let canRetryManually = true;
+      
+      if (error.response?.data?.error) {
+        const serverError = error.response.data.error;
+        errorMessage = serverError;
+        
+        // Check if already submitted
+        if (serverError.includes('already submitted')) {
+          errorMessage = 'Exam already submitted successfully!';
+          canRetryManually = false;
+          // Try to redirect to results
+          setTimeout(() => router.push(`/exam/${examId}/result`), 2000);
+        }
+        
+        // Check if time exceeded
+        if (serverError.includes('time exceeded')) {
+          errorMessage = 'Exam time has expired. Please contact your administrator.';
+          canRetryManually = false;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      if (canRetryManually) {
+        errorMessage += '\n\nPlease try again or contact support if the problem persists.';
+      }
+      
+      alert(errorMessage);
       setSubmitting(false);
     }
   };

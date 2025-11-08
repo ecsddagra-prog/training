@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getMyExams, getMyResults, getEmployeeDashboard } from '@/lib/api';
+import { getMyExams, getMyResults, getEmployeeDashboard, generateCertificate } from '@/lib/api';
 import Head from 'next/head';
 
 export default function EmployeeDashboard() {
@@ -12,6 +12,21 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
+
+  // Format date in IST timezone
+  const formatDateIST = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
 
   useEffect(() => {
     loadData();
@@ -198,9 +213,18 @@ export default function EmployeeDashboard() {
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 mb-3">{exam.exams.description}</p>
+                        <div className="text-xs text-gray-500 mb-3 space-y-1">
+                          <div>⏱️ Duration: {exam.exams.duration} min</div>
+                          {exam.exams.start_time && (
+                            <div>📅 Start: {formatDateIST(exam.exams.start_time)}</div>
+                          )}
+                          {exam.exams.end_time && (
+                            <div>🏁 End: {formatDateIST(exam.exams.end_time)}</div>
+                          )}
+                        </div>
                         <div className="flex items-center justify-between">
                           <div className="text-xs text-gray-500">
-                            <span>⏱️ {exam.exams.duration} min</span>
+                            🎯 Pass: {exam.exams.passing_score}%
                           </div>
                           {status.text === 'Available' && (
                             <button
@@ -209,6 +233,9 @@ export default function EmployeeDashboard() {
                             >
                               Start Exam
                             </button>
+                          )}
+                          {status.text === 'Upcoming' && (
+                            <span className="text-xs text-yellow-600 font-medium">Starts Soon</span>
                           )}
                         </div>
                       </div>
@@ -303,7 +330,7 @@ export default function EmployeeDashboard() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">{user.name}</h2>
-                <p className="text-gray-600">{user.employeeId}</p>
+                <p className="text-gray-600">{user.personnel_number || user.employeeId}</p>
               </div>
             </div>
 
@@ -312,12 +339,38 @@ export default function EmployeeDashboard() {
                 <h3 className="font-semibold text-gray-700 mb-3">Personal Information</h3>
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm text-gray-500">Employee ID</p>
-                    <p className="font-medium text-gray-800">{user.employeeId}</p>
+                    <p className="text-sm text-gray-500">Personnel Number</p>
+                    <p className="font-medium text-gray-800">{user.personnel_number || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Full Name</p>
+                    <p className="text-sm text-gray-500">Employee Name</p>
                     <p className="font-medium text-gray-800">{user.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Gender</p>
+                    <p className="font-medium text-gray-800">{user.gender || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Personal Mobile</p>
+                    <p className="font-medium text-gray-800">{user.personal_mobile || user.mobile || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-gray-700 mb-3">Office Information</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Personnel Sub-Area</p>
+                    <p className="font-medium text-gray-800">{user.personnel_area || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Employee Group</p>
+                    <p className="font-medium text-gray-800">{user.employee_group || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">DDO Office Name</p>
+                    <p className="font-medium text-gray-800">{user.discom || 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Role</p>
@@ -377,7 +430,7 @@ export default function EmployeeDashboard() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-800">{result.exams.title}</h3>
                       <p className="text-sm text-gray-500">
-                        Submitted: {new Date(result.submitted_at).toLocaleDateString()}
+                        Submitted: {formatDateIST(result.submitted_at)}
                       </p>
                     </div>
                     {result.rank && (
@@ -409,18 +462,38 @@ export default function EmployeeDashboard() {
                     </div>
                   </div>
 
-                  {result.certificate_url && (
-                    <a
-                      href={result.certificate_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition"
-                    >
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Download Certificate
-                    </a>
+                  {result.percentage >= 50 && (
+                    result.certificate_url ? (
+                      <a
+                        href={result.certificate_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download Certificate
+                      </a>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await generateCertificate(result.id);
+                            alert('Certificate generated successfully!');
+                            loadData();
+                          } catch (err) {
+                            alert(err.response?.data?.error || 'Failed to generate certificate');
+                          }
+                        }}
+                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                      >
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Generate Certificate
+                      </button>
+                    )
                   )}
                 </div>
               ))}

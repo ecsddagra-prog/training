@@ -50,6 +50,21 @@ export const getExams = async () => {
   return data;
 };
 
+export const getExamDetails = async (examId) => {
+  const { data } = await api.get(`/admin/exams/${examId}`);
+  return data;
+};
+
+export const updateExam = async (examId, examData) => {
+  const { data } = await api.put(`/admin/exams/${examId}`, examData);
+  return data;
+};
+
+export const deleteExam = async (examId) => {
+  const { data } = await api.delete(`/admin/exams/${examId}`);
+  return data;
+};
+
 export const assignExam = async (examId, employeeIds) => {
   const { data } = await api.post(`/admin/exams/${examId}/assign`, { employeeIds });
   return data;
@@ -92,6 +107,11 @@ export const addQuestion = async (questionData) => {
 
 export const getMyQuestions = async () => {
   const { data } = await api.get('/contributor/questions');
+  return data;
+};
+
+export const getAllQuestions = async () => {
+  const { data } = await api.get('/contributor/questions?all=true');
   return data;
 };
 
@@ -178,6 +198,11 @@ export const getAdminAnalytics = async () => {
   return data;
 };
 
+export const getRecentResults = async () => {
+  const { data } = await api.get('/admin/results/recent');
+  return data;
+};
+
 // Contributor functions
 export const bulkUploadQuestions = async (file) => {
   const formData = new FormData();
@@ -201,6 +226,11 @@ export const getContributorStats = async () => {
   return data;
 };
 
+export const getContributorProfile = async () => {
+  const { data } = await api.get('/contributor/profile');
+  return data;
+};
+
 // Employee functions
 export const getEmployeeDashboard = async () => {
   const { data } = await api.get('/employee/dashboard');
@@ -209,5 +239,40 @@ export const getEmployeeDashboard = async () => {
 
 export const getExamResult = async (examId) => {
   const { data } = await api.get(`/employee/results/${examId}`);
+  return data;
+};
+
+export const toggleExamCertificate = async (examId, enabled) => {
+  const { data } = await api.patch(`/admin/exams/${examId}/certificate`, { enabled });
+  return data;
+};
+
+export const generateCertificate = async (resultId) => {
+  const { data } = await api.post(`/employee/results/${resultId}/generate-certificate`);
+  return data;
+};
+
+export const adminGenerateCertificate = async (resultId) => {
+  const { data } = await api.post(`/admin/results/${resultId}/generate-certificate`);
+  return data;
+};
+
+export const updateEmployeeRole = async (userId, role) => {
+  const { data } = await api.patch(`/admin/employees/${userId}/role`, { role });
+  return data;
+};
+
+export const assignQuestionToContributor = async (questionId, contributorId) => {
+  const { data } = await api.post(`/admin/questions/${questionId}/assign`, { contributorId });
+  return data;
+};
+
+export const bulkAssignQuestions = async (questionIds, contributorId, filters) => {
+  const { data } = await api.post('/admin/questions/bulk-assign', { questionIds, contributorId, filters });
+  return data;
+};
+
+export const getAssignedQuestions = async () => {
+  const { data } = await api.get('/contributor/questions?assigned=true');
   return data;
 };

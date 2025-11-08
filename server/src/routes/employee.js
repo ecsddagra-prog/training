@@ -127,4 +127,35 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+router.post('/results/:resultId/generate-certificate', async (req, res) => {
+  const { resultId } = req.params;
+  const userId = req.user.id;
+
+  const { data: result, error } = await supabase
+    .from('exam_results')
+    .select('*, users(name, employee_id), exams(certificate_enabled)')
+    .eq('id', resultId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  if (!result) return res.status(404).json({ error: 'Result not found' });
+  if (!result.exams.certificate_enabled) return res.status(400).json({ error: 'Certificate not enabled for this exam' });
+  if (result.percentage < 50) return res.status(400).json({ error: 'Certificate only for passed students' });
+
+  try {
+    const { generateCertificate } = await import('../utils/certificate.js');
+    const certificateUrl = await generateCertificate(result);
+    
+    await supabase
+      .from('exam_results')
+      .update({ certificate_url: certificateUrl })
+      .eq('id', resultId);
+
+    res.json({ message: 'Certificate generated successfully', certificateUrl });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 export default router;

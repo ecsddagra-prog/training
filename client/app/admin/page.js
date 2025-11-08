@@ -5,6 +5,9 @@ import {
   uploadQuestions,
   createExam,
   getExams,
+  getExamDetails,
+  updateExam,
+  deleteExam,
   assignExam,
   getPendingQuestions,
   approveQuestion,
@@ -14,21 +17,28 @@ import {
   resetEmployeePassword,
   getApprovedQuestions,
   assignQuestionsToExam,
+  assignQuestionToContributor,
+  bulkAssignQuestions,
   getAdminAnalytics,
+  getRecentResults,
+  toggleExamCertificate,
+  adminGenerateCertificate,
+  updateEmployeeRole,
 } from '@/lib/api';
+import { formatDateIST, formatDateOnlyIST, toDateTimeLocalIST, fromDateTimeLocalIST } from '@/lib/dateUtils';
 import Head from 'next/head';
 
 export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [analytics, setAnalytics] = useState(null);
+  const [recentResults, setRecentResults] = useState([]);
   const [loading, setLoading] = useState({ analytics: false });
   const [feedback, setFeedback] = useState({ error: '', success: '' });
 
   useEffect(() => {
     loadAnalytics();
+    loadRecentResults();
   }, []);
-
-
 
   const loadAnalytics = async () => {
     setLoading((prev) => ({ ...prev, analytics: true }));
@@ -42,11 +52,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const loadRecentResults = async () => {
+    try {
+      const data = await getRecentResults();
+      setRecentResults(data);
+    } catch (err) {
+      console.error('Failed to load recent results:', err);
+    }
+  };
+
   const menuItems = [
     { id: 'upload-employees', title: 'Upload Employees', icon: '👥', description: 'Bulk upload employees via Excel/CSV' },
     { id: 'upload-questions', title: 'Upload Questions', icon: '❓', description: 'Bulk upload questions via Excel/CSV' },
     { id: 'create-exam', title: 'Create Exam', icon: '📝', description: 'Create new examination' },
+    { id: 'manage-exams', title: 'Manage Exams', icon: '✏️', description: 'View, edit, delete exams' },
     { id: 'assign-questions', title: 'Assign Questions to Exam', icon: '🔗', description: 'Link questions to exams' },
+    { id: 'assign-questions-contributor', title: 'Assign Questions to Contributors', icon: '👨‍💼', description: 'Assign questions for editing' },
     { id: 'assign-exam', title: 'Assign Exam to Employees', icon: '📋', description: 'Assign exams to employees' },
     { id: 'employee-management', title: 'Employee Management', icon: '⚙️', description: 'Manage employee accounts' },
     { id: 'exam-results', title: 'Exam Results', icon: '📊', description: 'View examination results' },
@@ -61,8 +82,12 @@ export default function AdminDashboard() {
         return <UploadQuestionsPage setFeedback={setFeedback} />;
       case 'create-exam':
         return <CreateExamPage setFeedback={setFeedback} />;
+      case 'manage-exams':
+        return <ManageExamsPage setFeedback={setFeedback} />;
       case 'assign-questions':
         return <AssignQuestionsPage setFeedback={setFeedback} />;
+      case 'assign-questions-contributor':
+        return <AssignQuestionsToContributorPage setFeedback={setFeedback} />;
       case 'assign-exam':
         return <AssignExamPage setFeedback={setFeedback} />;
       case 'employee-management':
@@ -126,8 +151,184 @@ export default function AdminDashboard() {
     );
   }
 
-  // Component definitions
-  const UploadEmployeesPage = ({ setFeedback }) => {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <Head>
+        <title>Admin Dashboard - HR Exam System</title>
+      </Head>
+      
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Admin Dashboard</h1>
+              <p className="text-gray-600 text-sm mt-1">Manage exams, users, and questions</p>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.href = '/';
+              }}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {feedback.error && (
+          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
+            <p className="text-red-700 font-medium">{feedback.error}</p>
+          </div>
+        )}
+        {feedback.success && (
+          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
+            <p className="text-green-700 font-medium">{feedback.success}</p>
+          </div>
+        )}
+
+        {/* Analytics Dashboard */}
+        {analytics && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-100 text-sm font-medium">Total Exams</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.totalExams}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-100 text-sm font-medium">Total Attempts</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults.totalAttempts}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-emerald-100 text-sm font-medium">Passed</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults.passedCount}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-red-100 text-sm font-medium">Failed</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults.failedCount}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-purple-100 text-sm font-medium">Pass Rate</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults.passRate}%</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-indigo-100 text-sm font-medium">Avg Score</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.averageScore}%</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Results */}
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+              <h3 className="text-lg font-semibold mb-4">Recent Exam Results</h3>
+              {recentResults.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Employee</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Exam</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Score</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Rank</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {recentResults.map((result) => (
+                        <tr key={result.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm">
+                            <div>
+                              <p className="font-medium">{result.user_name}</p>
+                              <p className="text-gray-500">{result.employee_id}</p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">{result.exam_title}</td>
+                          <td className="px-4 py-3 text-sm">{result.score}/{result.total_questions} ({result.percentage}%)</td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              result.status === 'passed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {result.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {result.rank && (
+                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                                #{result.rank}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {formatDateIST(result.submitted_at)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-4">No recent exam results</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Menu Tiles */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {menuItems.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => setCurrentPage(item.id)}
+              className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group"
+            >
+              <div className="text-center">
+                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
+                  {item.icon}
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 mb-2">{item.title}</h3>
+                <p className="text-sm text-gray-600">{item.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const UploadEmployeesPage = ({ setFeedback }) => {
     const [file, setFile] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -199,9 +400,9 @@ export default function AdminDashboard() {
         </form>
       </div>
     );
-  };
+};
 
-  const UploadQuestionsPage = ({ setFeedback }) => {
+const UploadQuestionsPage = ({ setFeedback }) => {
     const [file, setFile] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -223,12 +424,12 @@ export default function AdminDashboard() {
 
     const downloadSample = () => {
       const sampleData = [
-        ['Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Subject', 'Difficulty'],
-        ['What is 2+2?', '3', '4', '5', '6', 'B', 'Mathematics', 'easy'],
-        ['Capital of India?', 'Mumbai', 'Delhi', 'Kolkata', 'Chennai', 'B', 'General Knowledge', 'medium']
+        ['Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Subject', 'Difficulty', 'Lot'],
+        ['What is 2+2?', '3', '4', '5', '6', 'B', 'Mathematics', 'easy', 'Lot-1'],
+        ['भारत की राजधानी क्या है?', 'मुंबई', 'दिल्ली', 'कोलकाता', 'चेन्नई', 'B', 'General Knowledge', 'medium', 'Lot-1']
       ];
-      const csv = sampleData.map(row => row.join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const csv = '\uFEFF' + sampleData.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -269,9 +470,9 @@ export default function AdminDashboard() {
         </form>
       </div>
     );
-  };
+};
 
-  const CreateExamPage = ({ setFeedback }) => {
+const CreateExamPage = ({ setFeedback }) => {
     const [examForm, setExamForm] = useState({
       title: '', description: '', duration: 60, passingScore: 50,
       totalQuestions: 10, marksPerQuestion: 1, startTime: '', endTime: ''
@@ -281,8 +482,13 @@ export default function AdminDashboard() {
     const calculateEndTime = (startTime, duration) => {
       if (!startTime || !duration) return '';
       const start = new Date(startTime);
-      const end = new Date(start.getTime() + duration * 60000);
-      return end.toISOString().slice(0, 16);
+      const end = new Date(start.getTime() + parseInt(duration) * 60 * 1000);
+      const year = end.getFullYear();
+      const month = String(end.getMonth() + 1).padStart(2, '0');
+      const day = String(end.getDate()).padStart(2, '0');
+      const hours = String(end.getHours()).padStart(2, '0');
+      const minutes = String(end.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     };
 
     const handleSubmit = async (e) => {
@@ -290,7 +496,13 @@ export default function AdminDashboard() {
       setLoading(true);
       setFeedback({ error: '', success: '' });
       try {
-        await createExam(examForm);
+        // Convert IST datetime-local values to UTC for backend
+        const examData = {
+          ...examForm,
+          startTime: examForm.startTime ? fromDateTimeLocalIST(examForm.startTime) : null,
+          endTime: examForm.endTime ? fromDateTimeLocalIST(examForm.endTime) : null
+        };
+        await createExam(examData);
         setFeedback({ success: 'Exam created successfully!' });
         setExamForm({ title: '', description: '', duration: 60, passingScore: 50, totalQuestions: 10, marksPerQuestion: 1, startTime: '', endTime: '' });
       } catch (err) {
@@ -351,7 +563,7 @@ export default function AdminDashboard() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time (IST)</label>
               <input
                 type="datetime-local"
                 value={examForm.startTime}
@@ -362,15 +574,17 @@ export default function AdminDashboard() {
                 }}
                 className="w-full p-3 border rounded-lg"
               />
+              <p className="text-xs text-gray-500 mt-1">Time will be shown in Indian Standard Time</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Time (Auto-calculated)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Time (Auto-calculated, IST)</label>
               <input
                 type="datetime-local"
                 value={examForm.endTime}
                 className="w-full p-3 border rounded-lg bg-gray-100"
                 disabled readOnly
               />
+              <p className="text-xs text-gray-500 mt-1">Based on duration from start time</p>
             </div>
           </div>
           <button
@@ -383,162 +597,1190 @@ export default function AdminDashboard() {
         </form>
       </div>
     );
+};
+
+const AssignQuestionsPage = ({ setFeedback }) => {
+    const [exams, setExams] = useState([]);
+    const [questions, setQuestions] = useState([]);
+    const [selectedExam, setSelectedExam] = useState('');
+    const [selectedQuestions, setSelectedQuestions] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [filterSubject, setFilterSubject] = useState('');
+    const [filterDifficulty, setFilterDifficulty] = useState('');
+    const [filterLot, setFilterLot] = useState('');
+
+    useEffect(() => {
+      loadExams();
+      loadQuestions();
+    }, []);
+
+    const loadExams = async () => {
+      try {
+        const data = await getExams();
+        setExams(data);
+      } catch (err) {
+        console.error('Failed to load exams:', err);
+      }
+    };
+
+    const loadQuestions = async () => {
+      try {
+        const data = await getApprovedQuestions();
+        setQuestions(data);
+      } catch (err) {
+        console.error('Failed to load questions:', err);
+      }
+    };
+
+    const handleAssign = async () => {
+      if (!selectedExam || selectedQuestions.length === 0) return;
+      setLoading(true);
+      setFeedback({ error: '', success: '' });
+      try {
+        await assignQuestionsToExam(selectedExam, selectedQuestions);
+        setFeedback({ success: 'Questions assigned successfully!' });
+        setSelectedQuestions([]);
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to assign questions.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const subjects = [...new Set(questions.map(q => q.subject).filter(Boolean))];
+    const difficulties = ['easy', 'medium', 'hard'];
+    const lots = [...new Set(questions.map(q => q.lot).filter(Boolean))];
+
+    const filteredQuestions = questions.filter(q => {
+      if (filterSubject && q.subject !== filterSubject) return false;
+      if (filterDifficulty && q.difficulty !== filterDifficulty) return false;
+      if (filterLot && q.lot !== filterLot) return false;
+      return true;
+    });
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Exam</label>
+            <select
+              value={selectedExam}
+              onChange={(e) => setSelectedExam(e.target.value)}
+              className="w-full p-3 border rounded-lg"
+            >
+              <option value="">Choose an exam</option>
+              {exams.map((exam) => (
+                <option key={exam.id} value={exam.id}>{exam.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Subject</label>
+              <select
+                value={filterSubject}
+                onChange={(e) => setFilterSubject(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              >
+                <option value="">All Subjects</option>
+                {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Difficulty</label>
+              <select
+                value={filterDifficulty}
+                onChange={(e) => setFilterDifficulty(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              >
+                <option value="">All Levels</option>
+                {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Lot</label>
+              <select
+                value={filterLot}
+                onChange={(e) => setFilterLot(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              >
+                <option value="">All Lots</option>
+                {lots.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">Select Questions ({selectedQuestions.length} selected, {filteredQuestions.length} shown)</label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filteredQuestions.length > 0 && filteredQuestions.every(q => selectedQuestions.includes(q.id))}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      const allIds = [...new Set([...selectedQuestions, ...filteredQuestions.map(q => q.id)])];
+                      setSelectedQuestions(allIds);
+                    } else {
+                      const filteredIds = filteredQuestions.map(q => q.id);
+                      setSelectedQuestions(selectedQuestions.filter(id => !filteredIds.includes(id)));
+                    }
+                  }}
+                  className="mr-2"
+                />
+                <span className="text-sm text-blue-600 font-medium">Select All Filtered</span>
+              </label>
+            </div>
+            <div className="border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+              {filteredQuestions.map((q) => (
+                <label key={q.id} className="flex items-start p-3 hover:bg-gray-50 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedQuestions.includes(q.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedQuestions([...selectedQuestions, q.id]);
+                      } else {
+                        setSelectedQuestions(selectedQuestions.filter(id => id !== q.id));
+                      }
+                    }}
+                    className="mt-1 mr-3"
+                  />
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800">{q.question_text}</p>
+                    <p className="text-sm text-gray-500">Subject: {q.subject} | Difficulty: {q.difficulty} {q.lot && `| Lot: ${q.lot}`}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={handleAssign}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg disabled:bg-blue-400 hover:bg-blue-700"
+            disabled={!selectedExam || selectedQuestions.length === 0 || loading}
+          >
+            {loading ? 'Assigning...' : 'Assign Questions to Exam'}
+          </button>
+        </div>
+      </div>
+    );
+};
+
+const AssignExamPage = ({ setFeedback }) => {
+    const [exams, setExams] = useState([]);
+    const [employees, setEmployees] = useState([]);
+    const [selectedExam, setSelectedExam] = useState('');
+    const [selectedEmployees, setSelectedEmployees] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterDepartment, setFilterDepartment] = useState('');
+    const [bulkIds, setBulkIds] = useState('');
+
+    useEffect(() => {
+      loadExams();
+      loadEmployees();
+    }, []);
+
+    const loadExams = async () => {
+      try {
+        const data = await getExams();
+        setExams(data);
+      } catch (err) {
+        console.error('Failed to load exams:', err);
+      }
+    };
+
+    const loadEmployees = async () => {
+      try {
+        const data = await getEmployees();
+        setEmployees(data.filter(u => u.role === 'employee'));
+      } catch (err) {
+        console.error('Failed to load employees:', err);
+      }
+    };
+
+    const handleAssign = async () => {
+      if (!selectedExam || selectedEmployees.length === 0) return;
+      setLoading(true);
+      setFeedback({ error: '', success: '' });
+      try {
+        await assignExam(selectedExam, selectedEmployees);
+        setFeedback({ success: `Exam assigned to ${selectedEmployees.length} employees!` });
+        setSelectedEmployees([]);
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to assign exam.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleBulkSelect = () => {
+      const ids = bulkIds.split(',').map(id => id.trim()).filter(Boolean);
+      const matched = employees.filter(emp => ids.includes(emp.employee_id));
+      const newSelected = [...new Set([...selectedEmployees, ...matched.map(e => e.id)])];
+      setSelectedEmployees(newSelected);
+      setBulkIds('');
+      setFeedback({ success: `${matched.length} employees selected from bulk IDs` });
+    };
+
+    const departments = [...new Set(employees.map(e => e.department).filter(Boolean))];
+
+    const filteredEmployees = employees.filter(emp => {
+      if (searchTerm && !(
+        emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.employee_id?.toLowerCase().includes(searchTerm.toLowerCase())
+      )) return false;
+      if (filterDepartment && emp.department !== filterDepartment) return false;
+      return true;
+    });
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Exam</label>
+            <select
+              value={selectedExam}
+              onChange={(e) => setSelectedExam(e.target.value)}
+              className="w-full p-3 border rounded-lg"
+            >
+              <option value="">Choose an exam</option>
+              {exams.map((exam) => (
+                <option key={exam.id} value={exam.id}>{exam.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bg-blue-50 p-3 rounded-lg">
+            <label className="block text-xs font-medium text-gray-700 mb-2">Bulk Select by Employee IDs (comma separated)</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="e.g. EMP001, EMP002, EMP003"
+                value={bulkIds}
+                onChange={(e) => setBulkIds(e.target.value)}
+                className="flex-1 p-2 border rounded text-sm"
+              />
+              <button
+                onClick={handleBulkSelect}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                disabled={!bulkIds.trim()}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Search Employees</label>
+              <input
+                type="text"
+                placeholder="Name, Email, or ID"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Department</label>
+              <select
+                value={filterDepartment}
+                onChange={(e) => setFilterDepartment(e.target.value)}
+                className="w-full p-2 border rounded text-sm"
+              >
+                <option value="">All Departments</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Select Employees ({selectedEmployees.length} selected, {filteredEmployees.length} shown)</label>
+            <div className="border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+              {filteredEmployees.map((emp) => (
+                <label key={emp.id} className="flex items-center p-3 hover:bg-gray-50 rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedEmployees.includes(emp.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedEmployees([...selectedEmployees, emp.id]);
+                      } else {
+                        setSelectedEmployees(selectedEmployees.filter(id => id !== emp.id));
+                      }
+                    }}
+                    className="mr-3"
+                  />
+                  <div>
+                    <p className="font-medium text-gray-800">{emp.name}</p>
+                    <p className="text-sm text-gray-500">{emp.email} | {emp.employee_id}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <button
+            onClick={handleAssign}
+            className="w-full bg-green-600 text-white px-6 py-3 rounded-lg disabled:bg-green-400 hover:bg-green-700"
+            disabled={!selectedExam || selectedEmployees.length === 0 || loading}
+          >
+            {loading ? 'Assigning...' : 'Assign Exam to Employees'}
+          </button>
+        </div>
+      </div>
+    );
+};
+
+const EmployeeManagementPage = ({ setFeedback }) => {
+    const [employees, setEmployees] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterRole, setFilterRole] = useState('');
+    const [filterDepartment, setFilterDepartment] = useState('');
+
+    useEffect(() => {
+      loadEmployees();
+    }, []);
+
+    const loadEmployees = async () => {
+      setLoading(true);
+      try {
+        const data = await getEmployees();
+        setEmployees(data);
+      } catch (err) {
+        console.error('Failed to load employees:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleResetPassword = async (userId) => {
+      if (!confirm('Reset password for this employee?')) return;
+      try {
+        await resetEmployeePassword(userId);
+        setFeedback({ success: 'Password reset successfully!' });
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to reset password.' });
+      }
+    };
+
+    const handleRoleChange = async (userId, newRole) => {
+      if (!confirm(`Change role to ${newRole}?`)) return;
+      try {
+        await updateEmployeeRole(userId, newRole);
+        setFeedback({ success: 'Role updated successfully!' });
+        loadEmployees();
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to update role.' });
+      }
+    };
+
+    const roles = [...new Set(employees.map(e => e.role).filter(Boolean))];
+    const departments = [...new Set(employees.map(e => e.department).filter(Boolean))];
+
+    const filteredEmployees = employees.filter(emp => {
+      if (searchTerm && !(
+        emp.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.employee_id?.toLowerCase().includes(searchTerm.toLowerCase())
+      )) return false;
+      if (filterRole && emp.role !== filterRole) return false;
+      if (filterDepartment && emp.department !== filterDepartment) return false;
+      return true;
+    });
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="mb-4 space-y-3">
+          <input
+            type="text"
+            placeholder="Search by name, email, or employee ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full p-3 border rounded-lg"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              className="p-2 border rounded-lg text-sm"
+            >
+              <option value="">All Roles</option>
+              {roles.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <select
+              value={filterDepartment}
+              onChange={(e) => setFilterDepartment(e.target.value)}
+              className="p-2 border rounded-lg text-sm"
+            >
+              <option value="">All Departments</option>
+              {departments.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+          <p className="text-sm text-gray-600">Showing {filteredEmployees.length} of {employees.length} employees</p>
+        </div>
+        {loading ? (
+          <p className="text-center text-gray-500">Loading...</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Employee ID</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Name</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Email</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Role</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredEmployees.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm">{emp.employee_id}</td>
+                    <td className="px-4 py-3 text-sm font-medium">{emp.name}</td>
+                    <td className="px-4 py-3 text-sm">{emp.email}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        emp.role === 'admin' ? 'bg-red-100 text-red-700' :
+                        emp.role === 'contributor' ? 'bg-blue-100 text-blue-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {emp.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <div className="flex gap-2">
+                        <select
+                          value={emp.role}
+                          onChange={(e) => handleRoleChange(emp.id, e.target.value)}
+                          className="text-xs border rounded px-2 py-1"
+                        >
+                          <option value="employee">Employee</option>
+                          <option value="contributor">Contributor</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        <button
+                          onClick={() => handleResetPassword(emp.id)}
+                          className="text-blue-600 hover:text-blue-800 font-medium text-xs"
+                        >
+                          Reset Pwd
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+};
+
+const ExamResultsPage = ({ setFeedback }) => {
+    const [exams, setExams] = useState([]);
+    const [selectedExam, setSelectedExam] = useState('');
+    const [selectedExamData, setSelectedExamData] = useState(null);
+    const [results, setResults] = useState([]);
+    const [analytics, setAnalytics] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      loadExams();
+    }, []);
+
+    const loadExams = async () => {
+      try {
+        const data = await getExams();
+        setExams(data);
+      } catch (err) {
+        console.error('Failed to load exams:', err);
+      }
+    };
+
+    const loadResults = async (examId) => {
+      setLoading(true);
+      try {
+        const data = await getExamResults(examId);
+        setResults(data.results || data);
+        setAnalytics(data.analytics || null);
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to load results.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleExamChange = (examId) => {
+      setSelectedExam(examId);
+      const exam = exams.find(e => e.id === examId);
+      setSelectedExamData(exam);
+      if (examId) {
+        loadResults(examId);
+      } else {
+        setResults([]);
+        setAnalytics(null);
+      }
+    };
+
+    const handleToggleCertificate = async () => {
+      if (!selectedExam) return;
+      try {
+        const newState = !selectedExamData?.certificate_enabled;
+        await toggleExamCertificate(selectedExam, newState);
+        setFeedback({ success: `Certificate ${newState ? 'enabled' : 'disabled'} successfully!` });
+        loadExams();
+        handleExamChange(selectedExam);
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to toggle certificate.' });
+      }
+    };
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="mb-6 space-y-3">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Exam</label>
+          <select
+            value={selectedExam}
+            onChange={(e) => handleExamChange(e.target.value)}
+            className="w-full p-3 border rounded-lg"
+          >
+            <option value="">Choose an exam</option>
+            {exams.map((exam) => (
+              <option key={exam.id} value={exam.id}>{exam.title}</option>
+            ))}
+          </select>
+          {selectedExam && (
+            <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Certificate Generation</p>
+                <p className="text-xs text-gray-500">Enable certificates for passed students</p>
+              </div>
+              <button
+                onClick={handleToggleCertificate}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  selectedExamData?.certificate_enabled
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+                }`}
+              >
+                {selectedExamData?.certificate_enabled ? 'Enabled ✓' : 'Disabled'}
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {/* Analytics Section */}
+        {analytics && (
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-4">Exam Analytics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <p className="text-2xl font-bold text-blue-600">{analytics.totalAttempts}</p>
+                <p className="text-sm text-blue-800">Total Attempts</p>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <p className="text-2xl font-bold text-green-600">{analytics.passed}</p>
+                <p className="text-sm text-green-800">Passed</p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-lg text-center">
+                <p className="text-2xl font-bold text-red-600">{analytics.failed}</p>
+                <p className="text-sm text-red-800">Failed</p>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-lg text-center">
+                <p className="text-2xl font-bold text-purple-600">{analytics.passRate}%</p>
+                <p className="text-sm text-purple-800">Pass Rate</p>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Top Performers */}
+              <div className="bg-white border rounded-lg p-4">
+                <h4 className="font-semibold mb-3">🏆 Top Performers</h4>
+                <div className="space-y-2">
+                  {analytics.topPerformers.map((performer, index) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <div>
+                        <p className="font-medium">{performer.name}</p>
+                        <p className="text-sm text-gray-600">{performer.employee_id}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-green-600">{performer.percentage}%</p>
+                        <p className="text-xs text-gray-500">Rank #{performer.rank}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Department Performance */}
+              <div className="bg-white border rounded-lg p-4">
+                <h4 className="font-semibold mb-3">📊 Department Performance</h4>
+                <div className="space-y-2">
+                  {Object.entries(analytics.departmentWise).map(([dept, stats]) => (
+                    <div key={dept} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <p className="font-medium">{dept}</p>
+                      <div className="text-right">
+                        <p className="text-sm">{stats.passed}/{stats.total}</p>
+                        <p className="text-xs text-gray-500">{((stats.passed/stats.total)*100).toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="bg-gray-50 p-3 rounded text-center">
+                <p className="text-lg font-bold">{analytics.averageScore}%</p>
+                <p className="text-sm text-gray-600">Average Score</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded text-center">
+                <p className="text-lg font-bold">{analytics.highestScore}%</p>
+                <p className="text-sm text-gray-600">Highest Score</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded text-center">
+                <p className="text-lg font-bold">{analytics.lowestScore}%</p>
+                <p className="text-sm text-gray-600">Lowest Score</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {loading ? (
+          <p className="text-center text-gray-500">Loading results...</p>
+        ) : results.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Employee</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Score</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Percentage</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Rank</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Submitted</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Certificate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {results.map((result) => (
+                  <tr key={result.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium">{result.user_name}</td>
+                    <td className="px-4 py-3 text-sm">{result.score}/{result.total_marks}</td>
+                    <td className="px-4 py-3 text-sm">{result.percentage}%</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                        #{result.rank}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        result.status === 'passed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {result.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {new Date(result.submitted_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {result.status === 'passed' && (
+                        result.certificate_url ? (
+                          <a href={result.certificate_url} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-800 text-xs">
+                            View
+                          </a>
+                        ) : (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await adminGenerateCertificate(result.id);
+                                setFeedback({ success: 'Certificate generated!' });
+                                loadResults(selectedExam);
+                              } catch (err) {
+                                setFeedback({ error: err.response?.data?.error || 'Failed to generate certificate' });
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                          >
+                            Generate
+                          </button>
+                        )
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : selectedExam ? (
+          <p className="text-center text-gray-500">No results found for this exam.</p>
+        ) : null}
+      </div>
+    );
+};
+
+const PendingQuestionsPage = ({ setFeedback }) => {
+    const [questions, setQuestions] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      loadPendingQuestions();
+    }, []);
+
+    const loadPendingQuestions = async () => {
+      setLoading(true);
+      try {
+        const data = await getPendingQuestions();
+        setQuestions(data);
+      } catch (err) {
+        console.error('Failed to load pending questions:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleApprove = async (questionId) => {
+      try {
+        await approveQuestion(questionId);
+        setFeedback({ success: 'Question approved!' });
+        loadPendingQuestions();
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to approve question.' });
+      }
+    };
+
+    const handleReject = async (questionId) => {
+      if (!confirm('Reject this question?')) return;
+      try {
+        await rejectQuestion(questionId);
+        setFeedback({ success: 'Question rejected!' });
+        loadPendingQuestions();
+      } catch (err) {
+        setFeedback({ error: err.response?.data?.error || 'Failed to reject question.' });
+      }
+    };
+
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        {loading ? (
+          <p className="text-center text-gray-500">Loading...</p>
+        ) : questions.length > 0 ? (
+          <div className="space-y-4">
+            {questions.map((q) => (
+              <div key={q.id} className="border rounded-lg p-4 hover:shadow-md transition">
+                <div className="mb-3">
+                  <p className="font-medium text-gray-800 mb-2">{q.question_text}</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <p className={q.correct_answer === 'A' ? 'text-green-600 font-medium' : 'text-gray-600'}>A) {q.option_a}</p>
+                    <p className={q.correct_answer === 'B' ? 'text-green-600 font-medium' : 'text-gray-600'}>B) {q.option_b}</p>
+                    <p className={q.correct_answer === 'C' ? 'text-green-600 font-medium' : 'text-gray-600'}>C) {q.option_c}</p>
+                    <p className={q.correct_answer === 'D' ? 'text-green-600 font-medium' : 'text-gray-600'}>D) {q.option_d}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex gap-2 text-xs">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">Subject: {q.subject}</span>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">Difficulty: {q.difficulty}</span>
+                    <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded">By: {q.contributor_name}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleApprove(q.id)}
+                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleReject(q.id)}
+                      className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-gray-500">No pending questions.</p>
+        )}
+      </div>
+    );
+};
+
+const AssignQuestionsToContributorPage = ({ setFeedback }) => {
+  const [questions, setQuestions] = useState([]);
+  const [contributors, setContributors] = useState([]);
+  const [selectedContributor, setSelectedContributor] = useState('');
+  const [selectedQuestions, setSelectedQuestions] = useState([]);
+  const [filterSubject, setFilterSubject] = useState('');
+  const [filterLot, setFilterLot] = useState('');
+  const [filterDifficulty, setFilterDifficulty] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadQuestions();
+    loadContributors();
+  }, []);
+
+  const loadQuestions = async () => {
+    try {
+      const data = await getApprovedQuestions();
+      setQuestions(data);
+    } catch (err) {
+      console.error('Failed to load questions:', err);
+    }
   };
 
-  const AssignQuestionsPage = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <p className="text-gray-600">Assign Questions to Exam functionality will be implemented here.</p>
-    </div>
-  );
+  const loadContributors = async () => {
+    try {
+      const data = await getEmployees();
+      setContributors(data.filter(u => u.role === 'contributor'));
+    } catch (err) {
+      console.error('Failed to load contributors:', err);
+    }
+  };
 
-  const AssignExamPage = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <p className="text-gray-600">Assign Exam to Employees functionality will be implemented here.</p>
-    </div>
-  );
+  const handleBulkAssign = async () => {
+    if (!selectedContributor) return;
+    setLoading(true);
+    try {
+      const filters = {};
+      if (filterSubject) filters.subject = filterSubject;
+      if (filterLot) filters.lot = filterLot;
+      if (filterDifficulty) filters.difficulty = filterDifficulty;
+      
+      await bulkAssignQuestions(selectedQuestions, selectedContributor, filters);
+      setFeedback({ success: 'Questions assigned successfully!' });
+      setSelectedQuestions([]);
+    } catch (err) {
+      setFeedback({ error: err.response?.data?.error || 'Failed to assign questions.' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const EmployeeManagementPage = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <p className="text-gray-600">Employee Management functionality will be implemented here.</p>
-    </div>
-  );
+  const subjects = [...new Set(questions.map(q => q.subject).filter(Boolean))];
+  const lots = [...new Set(questions.map(q => q.lot).filter(Boolean))];
+  const difficulties = ['easy', 'medium', 'hard'];
 
-  const ExamResultsPage = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <p className="text-gray-600">Exam Results functionality will be implemented here.</p>
-    </div>
-  );
-
-  const PendingQuestionsPage = () => (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <p className="text-gray-600">Pending Questions functionality will be implemented here.</p>
-    </div>
-  );
+  const filteredQuestions = questions.filter(q => {
+    if (filterSubject && q.subject !== filterSubject) return false;
+    if (filterLot && q.lot !== filterLot) return false;
+    if (filterDifficulty && q.difficulty !== filterDifficulty) return false;
+    return true;
+  });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <Head>
-        <title>Admin Dashboard - HR Exam System</title>
-      </Head>
-      
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Admin Dashboard</h1>
-              <p className="text-gray-600 text-sm mt-1">Manage exams, users, and questions</p>
-            </div>
-            <button
-              onClick={() => {
-                localStorage.clear();
-                window.location.href = '/';
-              }}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {feedback.error && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg">
-            <p className="text-red-700 font-medium">{feedback.error}</p>
-          </div>
-        )}
-        {feedback.success && (
-          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
-            <p className="text-green-700 font-medium">{feedback.success}</p>
-          </div>
-        )}
-
-        {/* Analytics Dashboard */}
-        {analytics && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-sm font-medium">Total Exams</p>
-                  <p className="text-4xl font-bold mt-2">{analytics.totalExams}</p>
-                </div>
-                <div className="bg-white bg-opacity-20 rounded-full p-3">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-green-100 text-sm font-medium">Total Employees</p>
-                  <p className="text-4xl font-bold mt-2">{analytics.totalUsers.employee}</p>
-                  <p className="text-green-100 text-xs mt-1">{analytics.totalUsers.contributor} Contributors</p>
-                </div>
-                <div className="bg-white bg-opacity-20 rounded-full p-3">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-yellow-100 text-sm font-medium">Pending Questions</p>
-                  <p className="text-4xl font-bold mt-2">{analytics.questions.pending}</p>
-                  <p className="text-yellow-100 text-xs mt-1">{analytics.questions.approved} Approved</p>
-                </div>
-                <div className="bg-white bg-opacity-20 rounded-full p-3">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-purple-100 text-sm font-medium">Average Score</p>
-                  <p className="text-4xl font-bold mt-2">{analytics.averageScore}%</p>
-                  <p className="text-purple-100 text-xs mt-1">Overall Performance</p>
-                </div>
-                <div className="bg-white bg-opacity-20 rounded-full p-3">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 4 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Menu Tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {menuItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setCurrentPage(item.id)}
-              className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group"
-            >
-              <div className="text-center">
-                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
-                  {item.icon}
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-600">{item.description}</p>
-              </div>
-            </div>
-          ))}
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Contributor</label>
+          <select
+            value={selectedContributor}
+            onChange={(e) => setSelectedContributor(e.target.value)}
+            className="w-full p-3 border rounded-lg"
+          >
+            <option value="">Choose a contributor</option>
+            {contributors.map((contributor) => (
+              <option key={contributor.id} value={contributor.id}>
+                {contributor.name} ({contributor.employee_id})
+              </option>
+            ))}
+          </select>
         </div>
 
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Subject</label>
+            <select
+              value={filterSubject}
+              onChange={(e) => setFilterSubject(e.target.value)}
+              className="w-full p-2 border rounded text-sm"
+            >
+              <option value="">All Subjects</option>
+              {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Lot</label>
+            <select
+              value={filterLot}
+              onChange={(e) => setFilterLot(e.target.value)}
+              className="w-full p-2 border rounded text-sm"
+            >
+              <option value="">All Lots</option>
+              {lots.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Difficulty</label>
+            <select
+              value={filterDifficulty}
+              onChange={(e) => setFilterDifficulty(e.target.value)}
+              className="w-full p-2 border rounded text-sm"
+            >
+              <option value="">All Levels</option>
+              {difficulties.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
 
+        <div className="bg-blue-50 p-3 rounded-lg">
+          <button
+            onClick={() => {
+              const allFiltered = filteredQuestions.map(q => q.id);
+              setSelectedQuestions(prev => [...new Set([...prev, ...allFiltered])]);
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm mr-2"
+          >
+            Select All Filtered ({filteredQuestions.length})
+          </button>
+          <button
+            onClick={handleBulkAssign}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+            disabled={!selectedContributor || loading}
+          >
+            {loading ? 'Assigning...' : `Assign ${selectedQuestions.length} Questions`}
+          </button>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Questions ({selectedQuestions.length} selected, {filteredQuestions.length} shown)
+          </label>
+          <div className="border rounded-lg p-4 max-h-96 overflow-y-auto space-y-2">
+            {filteredQuestions.map((q) => (
+              <label key={q.id} className="flex items-start p-3 hover:bg-gray-50 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedQuestions.includes(q.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedQuestions([...selectedQuestions, q.id]);
+                    } else {
+                      setSelectedQuestions(selectedQuestions.filter(id => id !== q.id));
+                    }
+                  }}
+                  className="mt-1 mr-3"
+                />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-800">{q.question_text}</p>
+                  <p className="text-sm text-gray-500">
+                    Subject: {q.subject} | Difficulty: {q.difficulty}
+                    {q.lot && ` | Lot: ${q.lot}`}
+                  </p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
-}
+};
+
+const ManageExamsPage = ({ setFeedback }) => {
+  const [exams, setExams] = useState([]);
+  const [editingExam, setEditingExam] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadExams();
+  }, []);
+
+  const loadExams = async () => {
+    setLoading(true);
+    try {
+      const data = await getExams();
+      setExams(data);
+    } catch (err) {
+      console.error('Failed to load exams:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (exam) => {
+    // Convert UTC to IST for datetime-local input
+    const startTime = exam.start_time ? toDateTimeLocalIST(exam.start_time) : '';
+    const endTime = exam.end_time ? toDateTimeLocalIST(exam.end_time) : '';
+    setEditingExam({ ...exam, startTime, endTime });
+  };
+
+  const handleUpdate = async () => {
+    try {
+      // Convert IST to UTC for backend
+      await updateExam(editingExam.id, {
+        title: editingExam.title,
+        description: editingExam.description,
+        duration: editingExam.duration,
+        passingScore: editingExam.passing_score,
+        startTime: editingExam.startTime ? fromDateTimeLocalIST(editingExam.startTime) : null,
+        endTime: editingExam.endTime ? fromDateTimeLocalIST(editingExam.endTime) : null
+      });
+      setFeedback({ success: 'Exam updated successfully!' });
+      setEditingExam(null);
+      loadExams();
+    } catch (err) {
+      setFeedback({ error: err.response?.data?.error || 'Failed to update exam.' });
+    }
+  };
+
+  const handleDelete = async (examId) => {
+    if (!confirm('Delete this exam? This action cannot be undone.')) return;
+    try {
+      await deleteExam(examId);
+      setFeedback({ success: 'Exam deleted successfully!' });
+      loadExams();
+    } catch (err) {
+      setFeedback({ error: err.response?.data?.error || 'Failed to delete exam.' });
+    }
+  };
+
+  const canEdit = (exam) => {
+    return !exam.start_time || new Date(exam.start_time) > new Date();
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      {editingExam ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Edit Exam</h3>
+            <button
+              onClick={() => setEditingExam(null)}
+              className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Exam Title"
+            value={editingExam.title}
+            onChange={(e) => setEditingExam({ ...editingExam, title: e.target.value })}
+            className="w-full p-3 border rounded-lg"
+          />
+          <textarea
+            placeholder="Description"
+            value={editingExam.description}
+            onChange={(e) => setEditingExam({ ...editingExam, description: e.target.value })}
+            className="w-full p-3 border rounded-lg h-24"
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <input
+              type="number"
+              placeholder="Duration (minutes)"
+              value={editingExam.duration}
+              onChange={(e) => setEditingExam({ ...editingExam, duration: parseInt(e.target.value) })}
+              className="p-3 border rounded-lg"
+            />
+            <input
+              type="number"
+              placeholder="Passing Score (%)"
+              value={editingExam.passing_score}
+              onChange={(e) => setEditingExam({ ...editingExam, passing_score: parseInt(e.target.value) })}
+              className="p-3 border rounded-lg"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time (IST)</label>
+              <input
+                type="datetime-local"
+                value={editingExam.startTime}
+                onChange={(e) => setEditingExam({ ...editingExam, startTime: e.target.value })}
+                className="p-3 border rounded-lg w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Time (IST)</label>
+              <input
+                type="datetime-local"
+                value={editingExam.endTime}
+                onChange={(e) => setEditingExam({ ...editingExam, endTime: e.target.value })}
+                className="p-3 border rounded-lg w-full"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleUpdate}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700"
+          >
+            Update Exam
+          </button>
+        </div>
+      ) : (
+        <div>
+          <h3 className="text-lg font-semibold mb-4">All Exams ({exams.length})</h3>
+          {loading ? (
+            <p className="text-center text-gray-500">Loading...</p>
+          ) : (
+            <div className="space-y-4">
+              {exams.map((exam) => (
+                <div key={exam.id} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-lg">{exam.title}</h4>
+                      <p className="text-gray-600 text-sm">{exam.description}</p>
+                      <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                        <span>Duration: {exam.duration} min</span>
+                        <span>Passing: {exam.passing_score}%</span>
+                        {exam.start_time && (
+                          <span>Start: {formatDateIST(exam.start_time)}</span>
+                        )}
+                        {exam.end_time && (
+                          <span>End: {formatDateIST(exam.end_time)}</span>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          !exam.start_time ? 'bg-gray-100 text-gray-600' :
+                          new Date() < new Date(exam.start_time) ? 'bg-blue-100 text-blue-700' :
+                          exam.end_time && new Date() > new Date(exam.end_time) ? 'bg-green-100 text-green-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {!exam.start_time ? 'Not Scheduled' :
+                           new Date() < new Date(exam.start_time) ? 'Scheduled' :
+                           exam.end_time && new Date() > new Date(exam.end_time) ? 'Completed' :
+                           'Started'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {canEdit(exam) ? (
+                        <>
+                          <button
+                            onClick={() => handleEdit(exam)}
+                            className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(exam.id)}
+                            className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
+                        <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded text-sm">
+                          Started
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
