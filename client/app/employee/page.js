@@ -12,6 +12,7 @@ export default function EmployeeDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState(null);
+  const [reexamReason, setReexamReason] = useState('');
 
   // Format date in IST timezone
   const formatDateIST = (dateString) => {
@@ -53,16 +54,23 @@ export default function EmployeeDashboard() {
 
   const getExamStatus = (exam) => {
     const now = new Date();
-    if (exam.exams.start_time && new Date(exam.exams.start_time) > now) {
-      return { text: 'Upcoming', color: 'bg-yellow-100 text-yellow-800' };
+    
+    // Check if exam is already submitted
+    const isSubmitted = results.some(r => r.exam_id === exam.exam_id);
+    if (isSubmitted) {
+      return { text: 'Submitted', color: 'bg-green-100 text-green-800', disabled: true };
     }
-    if (exam.exams.end_time && new Date(exam.exams.end_time) < now) {
-      return { text: 'Expired', color: 'bg-red-100 text-red-800' };
+    
+    if (exam.exams?.start_time && new Date(exam.exams.start_time) > now) {
+      return { text: 'Upcoming', color: 'bg-yellow-100 text-yellow-800', disabled: true };
+    }
+    if (exam.exams?.end_time && new Date(exam.exams.end_time) < now) {
+      return { text: 'Expired', color: 'bg-red-100 text-red-800', disabled: true };
     }
     if (exam.completed_at) {
-      return { text: 'Completed', color: 'bg-green-100 text-green-800' };
+      return { text: 'Completed', color: 'bg-green-100 text-green-800', disabled: true };
     }
-    return { text: 'Available', color: 'bg-blue-100 text-blue-800' };
+    return { text: 'Available', color: 'bg-blue-100 text-blue-800', disabled: false };
   };
 
   if (loading) {
@@ -106,93 +114,95 @@ export default function EmployeeDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* KPI Cards with Navigation */}
         {dashboard && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition text-left ${
+                activeTab === 'dashboard' ? 'ring-4 ring-blue-300' : ''
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-blue-100 text-sm font-medium">Pending Exams</p>
+                  <p className="text-blue-100 text-sm font-medium">Dashboard</p>
                   <p className="text-4xl font-bold mt-2">{dashboard.pendingExams}</p>
+                  <p className="text-blue-100 text-xs mt-1">Pending Exams</p>
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-full p-3">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                   </svg>
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+            <button
+              onClick={() => setActiveTab('exams')}
+              className={`bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition text-left ${
+                activeTab === 'exams' ? 'ring-4 ring-green-300' : ''
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm font-medium">Completed</p>
-                  <p className="text-4xl font-bold mt-2">{dashboard.completedExams}</p>
+                  <p className="text-green-100 text-sm font-medium">Exams</p>
+                  <p className="text-4xl font-bold mt-2">{exams.length}</p>
+                  <p className="text-green-100 text-xs mt-1">Total Assigned</p>
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-full p-3">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+            <button
+              onClick={() => setActiveTab('results')}
+              className={`bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition text-left ${
+                activeTab === 'results' ? 'ring-4 ring-purple-300' : ''
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-purple-100 text-sm font-medium">Average Score</p>
+                  <p className="text-purple-100 text-sm font-medium">Results</p>
                   <p className="text-4xl font-bold mt-2">{dashboard.averageScore}%</p>
+                  <p className="text-purple-100 text-xs mt-1">Average Score</p>
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-full p-3">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition text-left ${
+                activeTab === 'profile' ? 'ring-4 ring-yellow-300' : ''
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-yellow-100 text-sm font-medium">Best Score</p>
+                  <p className="text-yellow-100 text-sm font-medium">Profile</p>
                   <p className="text-4xl font-bold mt-2">{dashboard.bestScore}%</p>
+                  <p className="text-yellow-100 text-xs mt-1">Best Score</p>
                 </div>
                 <div className="bg-white bg-opacity-20 rounded-full p-3">
                   <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
               </div>
-            </div>
+            </button>
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200 bg-white rounded-t-xl px-6">
-            <nav className="-mb-px flex space-x-8">
-              {['dashboard', 'exams', 'results', 'profile'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition ${
-                    activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Available Exams</h2>
+          <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Available Exams</h2>
               {exams.filter(e => !e.completed_at).length === 0 ? (
                 <div className="text-center py-12">
                   <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -202,83 +212,49 @@ export default function EmployeeDashboard() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {exams.filter(e => !e.completed_at).slice(0, 4).map((exam) => {
+                  {exams.filter(e => !e.completed_at && e.exams).slice(0, 4).map((exam) => {
                     const status = getExamStatus(exam);
                     return (
                       <div key={exam.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
                         <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-semibold text-gray-800">{exam.exams.title}</h3>
+                          <h3 className="font-semibold text-gray-800">{exam.exams?.title || 'Untitled Exam'}</h3>
                           <span className={`text-xs px-2 py-1 rounded-full ${status.color}`}>
                             {status.text}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{exam.exams.description}</p>
+                        <p className="text-sm text-gray-600 mb-3">{exam.exams?.description || ''}</p>
                         <div className="text-xs text-gray-500 mb-3 space-y-1">
-                          <div>⏱️ Duration: {exam.exams.duration} min</div>
-                          {exam.exams.start_time && (
+                          <div>⏱️ Duration: {exam.exams?.duration || 0} min</div>
+                          <div>🎯 Pass: {exam.exams?.passing_score || 50}%</div>
+                          {exam.exams?.start_time && (
                             <div>📅 Start: {formatDateIST(exam.exams.start_time)}</div>
                           )}
-                          {exam.exams.end_time && (
+                          {exam.exams?.end_time && (
                             <div>🏁 End: {formatDateIST(exam.exams.end_time)}</div>
                           )}
                         </div>
                         <div className="flex items-center justify-between">
-                          <div className="text-xs text-gray-500">
-                            🎯 Pass: {exam.exams.passing_score}%
-                          </div>
-                          {status.text === 'Available' && (
+                          {!status.disabled && status.text === 'Available' ? (
                             <button
-                              onClick={() => router.push(`/exam/${exam.exams.id}`)}
-                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                              onClick={() => router.push(`/exam/${exam.exams?.id}`)}
+                              className="w-full px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
                             >
                               Start Exam
                             </button>
-                          )}
-                          {status.text === 'Upcoming' && (
-                            <span className="text-xs text-yellow-600 font-medium">Starts Soon</span>
+                          ) : (
+                            <div className="w-full text-center py-2">
+                              <span className={`text-sm font-medium px-3 py-1 rounded ${status.color}`}>
+                                {status.text}
+                              </span>
+                            </div>
                           )}
                         </div>
+
                       </div>
                     );
                   })}
                 </div>
               )}
-            </div>
-
-            <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Recent Results</h2>
-              {results.length === 0 ? (
-                <div className="text-center py-12">
-                  <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  <p className="text-gray-500">No results yet</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {results.slice(0, 5).map((result) => (
-                    <div key={result.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-800">{result.exams.title}</h3>
-                        <p className="text-sm text-gray-500">
-                          Score: {result.score}/{result.total_questions} • {result.percentage.toFixed(1)}%
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        {result.rank && (
-                          <div className="text-lg font-bold text-purple-600">#{result.rank}</div>
-                        )}
-                        <div className={`text-xs px-2 py-1 rounded-full inline-block ${
-                          result.percentage >= 50 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                        }`}>
-                          {result.percentage >= 50 ? 'Passed' : 'Failed'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -287,29 +263,41 @@ export default function EmployeeDashboard() {
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
             <h2 className="text-xl font-bold text-gray-800 mb-4">All Assigned Exams</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {exams.map((exam) => {
+              {exams.filter(e => e.exams).map((exam) => {
                 const status = getExamStatus(exam);
                 return (
                   <div key={exam.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-gray-800">{exam.exams.title}</h3>
+                      <h3 className="font-semibold text-gray-800">{exam.exams?.title || 'Untitled'}</h3>
                       <span className={`text-xs px-2 py-1 rounded-full ${status.color}`}>
                         {status.text}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">{exam.exams.description}</p>
+                    <p className="text-sm text-gray-600 mb-3">{exam.exams?.description || ''}</p>
+                    <div className="text-xs text-gray-500 mb-3 space-y-1">
+                      <div>⏱️ {exam.exams?.duration || 0} min</div>
+                      <div>🎯 Pass: {exam.exams?.passing_score || 50}%</div>
+                      {exam.exams?.start_time && (
+                        <div>📅 Start: {formatDateIST(exam.exams.start_time)}</div>
+                      )}
+                      {exam.exams?.end_time && (
+                        <div>🏁 End: {formatDateIST(exam.exams.end_time)}</div>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between">
-                      <div className="text-xs text-gray-500">
-                        <div>⏱️ {exam.exams.duration} min</div>
-                        <div>🎯 Pass: {exam.exams.passing_score}%</div>
-                      </div>
-                      {status.text === 'Available' && (
+                      {!status.disabled && status.text === 'Available' ? (
                         <button
-                          onClick={() => router.push(`/exam/${exam.exams.id}`)}
-                          className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                          onClick={() => router.push(`/exam/${exam.exams?.id}`)}
+                          className="w-full px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
                         >
                           Start
                         </button>
+                      ) : (
+                        <div className="w-full text-center py-2">
+                          <span className={`text-sm font-medium px-3 py-1 rounded ${status.color}`}>
+                            {status.text}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -422,82 +410,122 @@ export default function EmployeeDashboard() {
         {/* Results Tab */}
         {activeTab === 'results' && (
           <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">My Results</h2>
-            <div className="space-y-4">
-              {results.map((result) => (
-                <div key={result.id} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800">{result.exams.title}</h3>
-                      <p className="text-sm text-gray-500">
-                        Submitted: {formatDateIST(result.submitted_at)}
-                      </p>
-                    </div>
-                    {result.rank && (
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-600">#{result.rank}</div>
-                        <div className="text-xs text-gray-500">Rank</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">My Results (Last 2 Exams)</h2>
+            {results.length === 0 ? (
+              <div className="text-center py-12">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                <p className="text-gray-500">No results yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {results.slice(0, 2).map((result) => (
+                  <div key={result.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-800 text-lg">{result.exams?.title || 'Exam'}</h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Submitted: {formatDateIST(result.submitted_at)}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">{result.score}</div>
-                      <div className="text-xs text-gray-600">Correct</div>
+                      {result.rank && (
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-600">#{result.rank}</div>
+                          <div className="text-xs text-gray-500">Rank</div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-center p-3 bg-gray-50 rounded-lg">
-                      <div className="text-2xl font-bold text-gray-600">{result.total_questions}</div>
-                      <div className="text-xs text-gray-600">Total</div>
-                    </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">{result.percentage.toFixed(1)}%</div>
-                      <div className="text-xs text-gray-600">Score</div>
-                    </div>
-                    <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <div className="text-2xl font-bold text-purple-600">
-                        {result.total_time ? `${Math.floor(result.total_time / 60)}m` : 'N/A'}
+                    
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      <div className="text-center p-2 bg-blue-50 rounded">
+                        <div className="text-xl font-bold text-blue-600">{result.score}</div>
+                        <div className="text-xs text-gray-600">Correct</div>
                       </div>
-                      <div className="text-xs text-gray-600">Time</div>
+                      <div className="text-center p-2 bg-gray-50 rounded">
+                        <div className="text-xl font-bold text-gray-600">{result.total_questions}</div>
+                        <div className="text-xs text-gray-600">Total</div>
+                      </div>
+                      <div className="text-center p-2 bg-green-50 rounded">
+                        <div className="text-xl font-bold text-green-600">{result.percentage.toFixed(1)}%</div>
+                        <div className="text-xs text-gray-600">Score</div>
+                      </div>
                     </div>
-                  </div>
 
-                  {result.percentage >= 50 && (
-                    result.certificate_url ? (
-                      <a
-                        href={result.certificate_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Download Certificate
-                      </a>
-                    ) : (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await generateCertificate(result.id);
-                            alert('Certificate generated successfully!');
-                            loadData();
-                          } catch (err) {
-                            alert(err.response?.data?.error || 'Failed to generate certificate');
-                          }
-                        }}
-                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Generate Certificate
-                      </button>
-                    )
-                  )}
-                </div>
-              ))}
-            </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`flex-1 text-center px-3 py-2 rounded text-sm font-medium ${
+                          result.percentage >= 50 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {result.percentage >= 50 ? '✓ Passed' : '✗ Failed'}
+                        </div>
+                        
+                        {result.percentage >= 50 && (
+                          result.certificate_number ? (
+                            <div className="px-4 py-2 bg-green-600 text-white text-sm rounded font-mono">
+                              📄 {result.certificate_number}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await generateCertificate(result.id);
+                                  alert(`Certificate: ${res.certificateNumber}`);
+                                  loadData();
+                                } catch (err) {
+                                  alert(err.response?.data?.error || 'Failed to generate');
+                                }
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition"
+                            >
+                              Generate Certificate
+                            </button>
+                          )
+                        )}
+                      </div>
+                      
+                      <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                        <p className="text-xs text-yellow-800 mb-2 font-medium">Request Re-exam</p>
+                        <input
+                          type="text"
+                          placeholder="Reason (e.g., Failed / Want to improve rank)"
+                          className="w-full text-xs px-2 py-1 border rounded mb-2"
+                          onChange={(e) => setReexamReason(e.target.value)}
+                        />
+                        {!result.reexam_requested ? (
+                          <button
+                            onClick={async () => {
+                              if (!reexamReason.trim()) {
+                                alert('Please enter reason');
+                                return;
+                              }
+                              try {
+                                const token = localStorage.getItem('token');
+                                await fetch('/api/employee/reexam-request', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                  body: JSON.stringify({ examId: result.exam_id, reason: reexamReason })
+                                });
+                                alert('Re-exam request submitted!');
+                                setReexamReason('');
+                                loadData();
+                              } catch (err) {
+                                alert('Failed to submit request');
+                              }
+                            }}
+                            className="w-full px-3 py-1 bg-yellow-600 text-white text-xs rounded hover:bg-yellow-700 transition"
+                          >
+                            Submit Request
+                          </button>
+                        ) : (
+                          <p className="text-xs text-yellow-700 text-center">Request already submitted</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

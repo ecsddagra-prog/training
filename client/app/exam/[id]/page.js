@@ -43,18 +43,11 @@ export default function ExamPage() {
         setExam(data.exam);
         setQuestions(data.questions);
         setStartTime(new Date());
-        setServerStartTime(new Date(data.startedAt));
+        setServerStartTime(new Date(data.startTime));
         
-        // Calculate time left based on server time
-        const serverNow = new Date(data.serverTime);
-        const endsAt = new Date(data.endsAt);
-        const timeLeftSeconds = Math.floor((endsAt - serverNow) / 1000);
-        console.log('Time calculation:');
-        console.log('Server Now:', serverNow.toISOString());
-        console.log('Ends At:', endsAt.toISOString());
-        console.log('Time Left (seconds):', timeLeftSeconds);
-        console.log('Time Left (minutes):', Math.floor(timeLeftSeconds / 60));
-        setTimeLeft(Math.max(0, timeLeftSeconds));
+        // Calculate time left from exam duration
+        const durationInSeconds = data.exam.duration * 60;
+        setTimeLeft(durationInSeconds);
         
         // Initialize question times
         const times = {};
@@ -65,8 +58,10 @@ export default function ExamPage() {
       } catch (error) {
         console.error('Start exam error:', error);
         console.error('Error response:', error.response?.data);
-        alert(error.response?.data?.error || 'Failed to start exam');
-        router.push('/employee');
+        const errorMsg = error.response?.data?.error || 'Failed to start exam';
+        alert(errorMsg);
+        setLoading(false);
+        setTimeout(() => router.push('/employee'), 2000);
       }
     };
     loadExam();

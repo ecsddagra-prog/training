@@ -71,7 +71,8 @@ export default function AdminDashboard() {
     { id: 'assign-exam', title: 'Assign Exam to Employees', icon: '📋', description: 'Assign exams to employees' },
     { id: 'employee-management', title: 'Employee Management', icon: '⚙️', description: 'Manage employee accounts' },
     { id: 'exam-results', title: 'Exam Results', icon: '📊', description: 'View examination results' },
-    { id: 'pending-questions', title: 'Pending Questions', icon: '⏳', description: 'Review pending questions' }
+    { id: 'pending-questions', title: 'Pending Questions', icon: '⏳', description: 'Review pending questions' },
+    { id: 'reexam-requests', title: 'Reexam Requests', icon: '🔄', description: 'Manage reexam requests' }
   ];
 
   const renderPageContent = () => {
@@ -96,6 +97,8 @@ export default function AdminDashboard() {
         return <ExamResultsPage setFeedback={setFeedback} />;
       case 'pending-questions':
         return <PendingQuestionsPage setFeedback={setFeedback} />;
+      case 'reexam-requests':
+        return <ReexamRequestsPage setFeedback={setFeedback} />;
       default:
         return null;
     }
@@ -193,7 +196,7 @@ export default function AdminDashboard() {
         {/* Analytics Dashboard */}
         {analytics && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-6 mb-8">
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
                 <div className="flex items-center justify-between">
                   <div>
@@ -207,7 +210,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-green-100 text-sm font-medium">Total Attempts</p>
-                    <p className="text-4xl font-bold mt-2">{analytics.examResults.totalAttempts}</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults?.totalAttempts || 0}</p>
                   </div>
                 </div>
               </div>
@@ -216,7 +219,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-emerald-100 text-sm font-medium">Passed</p>
-                    <p className="text-4xl font-bold mt-2">{analytics.examResults.passedCount}</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults?.passedCount || 0}</p>
                   </div>
                 </div>
               </div>
@@ -225,7 +228,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-red-100 text-sm font-medium">Failed</p>
-                    <p className="text-4xl font-bold mt-2">{analytics.examResults.failedCount}</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults?.failedCount || 0}</p>
                   </div>
                 </div>
               </div>
@@ -234,7 +237,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-purple-100 text-sm font-medium">Pass Rate</p>
-                    <p className="text-4xl font-bold mt-2">{analytics.examResults.passRate}%</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.examResults?.passRate || 0}%</p>
                   </div>
                 </div>
               </div>
@@ -243,14 +246,42 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-indigo-100 text-sm font-medium">Avg Score</p>
-                    <p className="text-4xl font-bold mt-2">{analytics.averageScore}%</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.averageScore || 0}%</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-orange-100 text-sm font-medium">Reexam Requests</p>
+                    <p className="text-4xl font-bold mt-2">{analytics.reexamRequests || 0}</p>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Menu Tiles */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
+              {menuItems.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => setCurrentPage(item.id)}
+                  className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group"
+                >
+                  <div className="text-center">
+                    <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
+                      {item.icon}
+                    </div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">{item.title}</h3>
+                    <p className="text-sm text-gray-600">{item.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Recent Results */}
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <div className="bg-white rounded-xl shadow-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Recent Exam Results</h3>
               {recentResults.length > 0 ? (
                 <div className="overflow-x-auto">
@@ -304,25 +335,6 @@ export default function AdminDashboard() {
             </div>
           </>
         )}
-
-        {/* Menu Tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {menuItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setCurrentPage(item.id)}
-              className="bg-white rounded-xl shadow-lg p-6 border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-200 cursor-pointer group"
-            >
-              <div className="text-center">
-                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">
-                  {item.icon}
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-2">{item.title}</h3>
-                <p className="text-sm text-gray-600">{item.description}</p>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -1580,6 +1592,107 @@ const AssignQuestionsToContributorPage = ({ setFeedback }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+const ReexamRequestsPage = ({ setFeedback }) => {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/admin/reexam-requests', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setRequests(data);
+    } catch (err) {
+      console.error('Failed to load requests:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApprove = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`/api/admin/reexam-requests/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setFeedback({ success: 'Request approved!' });
+      loadRequests();
+    } catch (err) {
+      setFeedback({ error: 'Failed to approve' });
+    }
+  };
+
+  const handleReject = async (id) => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`/api/admin/reexam-requests/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setFeedback({ success: 'Request rejected!' });
+      loadRequests();
+    } catch (err) {
+      setFeedback({ error: 'Failed to reject' });
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-6">
+      {loading ? (
+        <p className="text-center text-gray-500">Loading...</p>
+      ) : requests.length > 0 ? (
+        <div className="space-y-4">
+          {requests.map((req) => (
+            <div key={req.id} className="border rounded-lg p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="font-semibold">{req.employee_name}</p>
+                  <p className="text-sm text-gray-600">Exam: {req.exam_title}</p>
+                  <p className="text-sm text-gray-500">Reason: {req.reason}</p>
+                  <p className="text-xs text-gray-400">Requested: {new Date(req.requested_at).toLocaleString()}</p>
+                </div>
+                <span className={`px-2 py-1 rounded text-xs ${
+                  req.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                  req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                  'bg-red-100 text-red-700'
+                }`}>
+                  {req.status}
+                </span>
+              </div>
+              {req.status === 'pending' && (
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => handleApprove(req.id)}
+                    className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleReject(req.id)}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-center text-gray-500">No reexam requests</p>
+      )}
     </div>
   );
 };

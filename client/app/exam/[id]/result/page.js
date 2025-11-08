@@ -30,7 +30,7 @@ export default function ExamResultPage() {
   if (loading) return <div className="flex justify-center items-center h-screen">Loading results...</div>;
   if (!result) return <div className="flex justify-center items-center h-screen">No results found</div>;
 
-  const passed = result.percentage >= 50;
+  const passed = (result.percentage || 0) >= 50;
 
   return (
     <div className="min-h-screen bg-gray-100 py-8">
@@ -48,25 +48,36 @@ export default function ExamResultPage() {
           </div>
 
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600">{result.score}</div>
-                <div className="text-sm text-gray-500">Correct Answers</div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-3xl font-bold text-green-600">{result.score}</div>
+                <div className="text-sm text-gray-600">Correct</div>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-gray-600">{result.total_questions || result.totalQuestions}</div>
-                <div className="text-sm text-gray-500">Total Questions</div>
+              <div className="text-center p-4 bg-red-50 rounded-lg">
+                <div className="text-3xl font-bold text-red-600">{(result.total_questions || result.totalQuestions) - result.score}</div>
+                <div className="text-sm text-gray-600">Wrong</div>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600">{result.percentage.toFixed(1)}%</div>
-                <div className="text-sm text-gray-500">Score Percentage</div>
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-3xl font-bold text-blue-600">{Object.keys(result.answers || {}).length}</div>
+                <div className="text-sm text-gray-600">Attempted</div>
               </div>
-              <div className="text-center">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-3xl font-bold text-gray-600">{(result.total_questions || result.totalQuestions) - Object.keys(result.answers || {}).length}</div>
+                <div className="text-sm text-gray-600">Unattempted</div>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
                 <div className="text-3xl font-bold text-purple-600">
                   {result.rank ? `#${result.rank}` : '⏳'}
                 </div>
-                <div className="text-sm text-gray-500">{result.rank ? 'Rank' : 'Calculating...'}</div>
+                <div className="text-sm text-gray-600">{result.rank ? 'Rank' : 'Calculating'}</div>
               </div>
+            </div>
+
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 mb-8 text-center">
+              <div className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-2">
+                {(result.percentage || 0).toFixed(1)}%
+              </div>
+              <div className="text-gray-600 font-medium">Overall Score</div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -148,10 +159,13 @@ export default function ExamResultPage() {
 
             <div className="flex justify-center space-x-4">
               <button
-                onClick={() => router.push('/employee')}
-                className="px-6 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                onClick={() => {
+                  window.close();
+                  setTimeout(() => router.push('/employee'), 100);
+                }}
+                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                Back to Dashboard
+                Close Page
               </button>
             </div>
           </div>
